@@ -1,28 +1,29 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
   McpError,
-} from '@modelcontextprotocol/sdk/types.js';
+} from "@modelcontextprotocol/sdk/types.js";
 
-import { CoreAnalysisTools } from './tools/core-analysis.js';
-import { IntelligenceTools } from './tools/intelligence-tools.js';
-import { AutomationTools } from './tools/automation-tools.js';
-import { MonitoringTools } from './tools/monitoring-tools.js';
-import { SemanticEngine } from '../engines/semantic-engine.js';
-import { PatternEngine } from '../engines/pattern-engine.js';
-import { SQLiteDatabase } from '../storage/sqlite-db.js';
-import { SemanticVectorDB } from '../storage/vector-db.js';
-import { config } from '../config/config.js';
-import { validateInput, VALIDATION_SCHEMAS } from './validation.js';
-import { Logger } from '../utils/logger.js';
+import { CoreAnalysisTools } from "./tools/core-analysis.js";
+import { IntelligenceTools } from "./tools/intelligence-tools.js";
+import { AutomationTools } from "./tools/automation-tools.js";
+import { MonitoringTools } from "./tools/monitoring-tools.js";
+import { SemanticEngine } from "../engines/semantic-engine.js";
+import { PatternEngine } from "../engines/pattern-engine.js";
+import { SQLiteDatabase } from "../storage/sqlite-db.js";
+import { createVectorStore } from "../storage/vector-factory.js";
+import { VectorStore } from "../storage/vector-store.js";
+import { config } from "../config/config.js";
+import { validateInput, VALIDATION_SCHEMAS } from "./validation.js";
+import { Logger } from "../utils/logger.js";
 
 export class CodeCartographerMCP {
   private server: Server;
   private database!: SQLiteDatabase;
-  private vectorDB!: SemanticVectorDB;
+  private vectorDB!: VectorStore;
   private semanticEngine!: SemanticEngine;
   private patternEngine!: PatternEngine;
   private coreTools!: CoreAnalysisTools;
@@ -33,14 +34,14 @@ export class CodeCartographerMCP {
   constructor() {
     this.server = new Server(
       {
-        name: 'in-memoria',
-        version: '0.6.0',
+        name: "in-memoria",
+        version: "0.6.0",
       },
       {
         capabilities: {
           tools: {},
         },
-      }
+      },
     );
 
     this.setupHandlers();
@@ -48,7 +49,7 @@ export class CodeCartographerMCP {
 
   private async initializeComponents(): Promise<void> {
     try {
-      Logger.info('Initializing In Memoria components...');
+      Logger.info("Initializing In Memoria components...");
 
       // Initialize storage using configuration management
       // Database path is determined by config based on the analyzed project
@@ -58,47 +59,56 @@ export class CodeCartographerMCP {
 
       try {
         this.database = new SQLiteDatabase(dbPath);
-        Logger.info('SQLite database initialized successfully');
+        Logger.info("SQLite database initialized successfully");
       } catch (dbError: unknown) {
-        Logger.error('Failed to initialize SQLite database:', dbError);
-        Logger.error('The MCP server will continue with limited functionality');
-        throw new Error(`Database initialization failed: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
+        Logger.error("Failed to initialize SQLite database:", dbError);
+        Logger.error("The MCP server will continue with limited functionality");
+        throw new Error(
+          `Database initialization failed: ${dbError instanceof Error ? dbError.message : String(dbError)}`,
+        );
       }
 
       const embeddingConfig = config.getEmbeddingConfig();
-      this.vectorDB = new SemanticVectorDB(undefined, embeddingConfig); // Uses local embeddings only
-      Logger.info('Vector database initialized');
+      this.vectorDB = createVectorStore(embeddingConfig);
+      Logger.info("Vector database initialized");
 
       // Initialize engines
       this.semanticEngine = new SemanticEngine(this.database, this.vectorDB);
       this.patternEngine = new PatternEngine(this.database);
-      Logger.info('Analysis engines initialized');
+      Logger.info("Analysis engines initialized");
 
       // Initialize tool collections
-      this.coreTools = new CoreAnalysisTools(this.semanticEngine, this.patternEngine, this.database);
+      this.coreTools = new CoreAnalysisTools(
+        this.semanticEngine,
+        this.patternEngine,
+        this.database,
+      );
       this.intelligenceTools = new IntelligenceTools(
         this.semanticEngine,
         this.patternEngine,
         this.database,
-        this.vectorDB // Pass shared vectorDB instance
+        this.vectorDB, // Pass shared vectorDB instance
       );
       this.automationTools = new AutomationTools(
         this.semanticEngine,
         this.patternEngine,
-        this.database
+        this.database,
       );
       this.monitoringTools = new MonitoringTools(
         this.semanticEngine,
         this.patternEngine,
         this.database,
-        dbPath
+        dbPath,
       );
-      Logger.info('Tool collections initialized');
+      Logger.info("Tool collections initialized");
 
-      Logger.info('In Memoria components initialized successfully');
+      Logger.info("In Memoria components initialized successfully");
     } catch (error: unknown) {
-      Logger.error('Failed to initialize In Memoria components:', error);
-      Logger.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+      Logger.error("Failed to initialize In Memoria components:", error);
+      Logger.error(
+        "Stack trace:",
+        error instanceof Error ? error.stack : "No stack trace available",
+      );
       throw error;
     }
   }
@@ -111,8 +121,8 @@ export class CodeCartographerMCP {
           ...this.coreTools.tools,
           ...this.intelligenceTools.tools,
           ...this.automationTools.tools,
-          ...this.monitoringTools.tools
-        ]
+          ...this.monitoringTools.tools,
+        ],
       };
     });
 
@@ -127,10 +137,10 @@ export class CodeCartographerMCP {
         return {
           content: [
             {
-              type: 'text',
-              text: JSON.stringify(result, null, 2)
-            }
-          ]
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
         };
       } catch (error) {
         if (error instanceof McpError) {
@@ -139,7 +149,7 @@ export class CodeCartographerMCP {
 
         throw new McpError(
           ErrorCode.InternalError,
-          `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`
+          `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     });
@@ -154,7 +164,7 @@ export class CodeCartographerMCP {
 
     // Core Analysis Tools
     switch (name) {
-      case 'analyze_codebase':
+      case "analyze_codebase":
         return await this.coreTools.analyzeCodebase(args);
 
       // DEPRECATED (Phase 4): Merged into analyze_codebase - now handles both files and directories
@@ -165,7 +175,7 @@ export class CodeCartographerMCP {
       // case 'get_project_structure':
       //   return await this.coreTools.getProjectStructure(args);
 
-      case 'search_codebase':
+      case "search_codebase":
         return await this.coreTools.searchCodebase(args);
 
       // DEPRECATED (Phase 4): Not agent-facing, removed from tool list
@@ -173,29 +183,29 @@ export class CodeCartographerMCP {
       //   return await this.coreTools.generateDocumentation(args);
 
       // Intelligence Tools
-      case 'learn_codebase_intelligence':
+      case "learn_codebase_intelligence":
         return await this.intelligenceTools.learnCodebaseIntelligence(args);
 
-      case 'get_semantic_insights':
+      case "get_semantic_insights":
         return await this.intelligenceTools.getSemanticInsights(args);
 
-      case 'get_pattern_recommendations':
+      case "get_pattern_recommendations":
         return await this.intelligenceTools.getPatternRecommendations(args);
 
-      case 'predict_coding_approach':
+      case "predict_coding_approach":
         return await this.intelligenceTools.predictCodingApproach(args);
 
-      case 'get_developer_profile':
+      case "get_developer_profile":
         return await this.intelligenceTools.getDeveloperProfile(args);
 
-      case 'contribute_insights':
+      case "contribute_insights":
         return await this.intelligenceTools.contributeInsights(args);
 
-      case 'get_project_blueprint':
+      case "get_project_blueprint":
         return await this.intelligenceTools.getProjectBlueprint(args);
 
       // Automation Tools
-      case 'auto_learn_if_needed':
+      case "auto_learn_if_needed":
         return await this.automationTools.autoLearnIfNeeded(args);
 
       // DEPRECATED (Phase 4): Merged into get_project_blueprint - returns learning status in blueprint
@@ -207,36 +217,33 @@ export class CodeCartographerMCP {
       //   return await this.automationTools.quickSetup(args);
 
       // Monitoring Tools
-      case 'get_system_status':
+      case "get_system_status":
         return await this.monitoringTools.getSystemStatus(args);
 
-      case 'get_intelligence_metrics':
+      case "get_intelligence_metrics":
         return await this.monitoringTools.getIntelligenceMetrics(args);
 
-      case 'get_performance_status':
+      case "get_performance_status":
         return await this.monitoringTools.getPerformanceStatus(args);
 
-      case 'health_check':
+      case "health_check":
         return await this.monitoringTools.healthCheck(args);
 
       default:
-        throw new McpError(
-          ErrorCode.MethodNotFound,
-          `Unknown tool: ${name}`
-        );
+        throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
   }
 
   async start(): Promise<void> {
     // Set environment variable to indicate MCP server mode
-    process.env.MCP_SERVER = 'true';
+    process.env.MCP_SERVER = "true";
 
     await this.initializeComponents();
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
 
-    Logger.info('In Memoria MCP Server started');
+    Logger.info("In Memoria MCP Server started");
   }
 
   /**
@@ -247,7 +254,7 @@ export class CodeCartographerMCP {
       ...this.coreTools.tools,
       ...this.intelligenceTools.tools,
       ...this.automationTools.tools,
-      ...this.monitoringTools.tools
+      ...this.monitoringTools.tools,
     ];
   }
 
@@ -269,7 +276,7 @@ export class CodeCartographerMCP {
       try {
         await this.vectorDB.close();
       } catch (error) {
-        console.warn('Warning: Failed to close vector database:', error);
+        console.warn("Warning: Failed to close vector database:", error);
       }
     }
 
@@ -288,12 +295,12 @@ export async function runServer(): Promise<void> {
   const server = new CodeCartographerMCP();
 
   // Handle graceful shutdown
-  process.on('SIGINT', async () => {
+  process.on("SIGINT", async () => {
     await server.stop();
     process.exit(0);
   });
 
-  process.on('SIGTERM', async () => {
+  process.on("SIGTERM", async () => {
     await server.stop();
     process.exit(0);
   });

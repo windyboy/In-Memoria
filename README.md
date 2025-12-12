@@ -154,8 +154,20 @@ In Memoria is built on Rust + TypeScript, using the Model Context Protocol to co
 
 - Everything stays on your machine
 - SQLite for patterns and metadata
-- SurrealDB with SurrealKV backend for persistent vector embeddings
+- SurrealDB with SurrealKV backend for persistent vector embeddings (default)
+- Optional: External Qdrant for vectors by setting `IN_MEMORIA_VECTOR_BACKEND=qdrant` plus `QDRANT_URL`/`QDRANT_API_KEY`/`QDRANT_COLLECTION`
 - Local transformers.js for embeddings (Xenova/all-MiniLM-L6-v2)
+
+### Using an external Qdrant vector DB
+
+1. Run a Qdrant instance you can reach (self-hosted or managed).
+2. Set env vars before starting In Memoria:
+   - `IN_MEMORIA_VECTOR_BACKEND=qdrant`
+   - `QDRANT_URL=https://your-qdrant-host` (or `http://localhost:6333`)
+   - `QDRANT_API_KEY=...` (if your Qdrant requires it)
+   - `QDRANT_COLLECTION=in-memoria` (optional, defaults to this)
+3. Ensure your embedding dimension matches the collection (default 384 for `Xenova/all-MiniLM-L6-v2`). If you override the model/dimension (`IN_MEMORIA_EMBEDDING_MODEL` / `IN_MEMORIA_EMBEDDING_DIMENSION`), create a Qdrant collection with the same dimension or let In Memoria create it.
+4. Start the server/CLI as usual; vectors will be stored/searched in Qdrant, while SQLite remains local for structured data.
 
 ### What Makes It Different
 

@@ -3,9 +3,9 @@
  * Centralizes all configuration with proper defaults and validation
  */
 
-import { join } from 'path';
-import { existsSync } from 'fs';
-import { Logger } from '../utils/logger.js';
+import { join } from "path";
+import { existsSync } from "fs";
+import { Logger } from "../utils/logger.js";
 
 export interface InMemoriaConfig {
   // Database configuration - always relative to analyzed project
@@ -15,7 +15,7 @@ export interface InMemoriaConfig {
     connectionPoolSize?: number;
     busyTimeout?: number;
   };
-  
+
   // Performance configuration
   performance: {
     batchSize: number;
@@ -23,14 +23,14 @@ export interface InMemoriaConfig {
     fileOperationTimeout: number;
     cacheSize: number;
   };
-  
+
   // API configuration
   api: {
     requestTimeout: number;
     rateLimitRequests: number;
     rateLimitWindow: number; // in milliseconds
   };
-  
+
   // Analysis configuration
   analysis: {
     supportedLanguages: string[];
@@ -38,10 +38,10 @@ export interface InMemoriaConfig {
     skipDirectories: string[];
     skipFilePatterns: string[];
   };
-  
+
   // Logging configuration
   logging: {
-    level: 'error' | 'warn' | 'info' | 'debug';
+    level: "error" | "warn" | "info" | "debug";
     enablePerformanceLogging: boolean;
   };
 
@@ -50,77 +50,114 @@ export interface InMemoriaConfig {
     model: string;
     dimension: number;
     cacheSize: number;
-    pooling: 'mean' | 'cls';
+    pooling: "mean" | "cls";
     normalize: boolean;
+  };
+
+  // Vector backend selection
+  vectorBackend?: "surreal" | "qdrant";
+
+  // Qdrant configuration (optional)
+  qdrant?: {
+    url?: string;
+    apiKey?: string;
+    collection?: string;
   };
 }
 
 const DEFAULT_CONFIG: InMemoriaConfig = {
   database: {
-    filename: 'in-memoria.db', // Standardized filename as per your requirement
+    filename: "in-memoria.db", // Standardized filename as per your requirement
     connectionPoolSize: 10,
-    busyTimeout: 30000
+    busyTimeout: 30000,
   },
-  
+
   performance: {
     batchSize: 50,
     maxConcurrentFiles: 10,
     fileOperationTimeout: 30000,
-    cacheSize: 1000
+    cacheSize: 1000,
   },
-  
+
   api: {
     requestTimeout: 30000,
     rateLimitRequests: 50,
-    rateLimitWindow: 60000 // 1 minute
+    rateLimitWindow: 60000, // 1 minute
   },
-  
+
   analysis: {
     supportedLanguages: [
-      'javascript', 'typescript', 'python', 'rust', 'go', 'java', 
-      'cpp', 'c', 'csharp', 'svelte', 'sql', 'php'
+      "javascript",
+      "typescript",
+      "python",
+      "rust",
+      "go",
+      "java",
+      "cpp",
+      "c",
+      "csharp",
+      "svelte",
+      "sql",
+      "php",
     ],
     maxFileSize: 5 * 1024 * 1024, // 5MB
     skipDirectories: [
-      'node_modules', '.git', '.vscode', '.idea', 'dist', 'build', 
-      'target', '__pycache__', '.next', '.nuxt'
+      "node_modules",
+      ".git",
+      ".vscode",
+      ".idea",
+      "dist",
+      "build",
+      "target",
+      "__pycache__",
+      ".next",
+      ".nuxt",
     ],
     skipFilePatterns: [
-      '*.log', '*.tmp', '*.cache', '*.lock', '*.map', '*.min.js',
-      '*.bundle.js', '*.chunk.js'
-    ]
+      "*.log",
+      "*.tmp",
+      "*.cache",
+      "*.lock",
+      "*.map",
+      "*.min.js",
+      "*.bundle.js",
+      "*.chunk.js",
+    ],
   },
-  
+
   logging: {
-    level: 'info',
-    enablePerformanceLogging: false
+    level: "info",
+    enablePerformanceLogging: false,
   },
 
   embedding: {
-    model: 'Xenova/all-MiniLM-L6-v2',
+    model: "Xenova/all-MiniLM-L6-v2",
     dimension: 384,
     cacheSize: 1000,
-    pooling: 'mean',
-    normalize: true
-  }
+    pooling: "mean",
+    normalize: true,
+  },
+
+  vectorBackend: "surreal",
+  qdrant: {},
 };
 
 export class ConfigManager {
   private static instance: ConfigManager;
   private config: InMemoriaConfig;
-  
+
   private constructor() {
     this.config = { ...DEFAULT_CONFIG };
     this.loadFromEnvironment();
   }
-  
+
   static getInstance(): ConfigManager {
     if (!ConfigManager.instance) {
       ConfigManager.instance = new ConfigManager();
     }
     return ConfigManager.instance;
   }
-  
+
   getConfig(): InMemoriaConfig {
     return { ...this.config };
   }
@@ -128,10 +165,10 @@ export class ConfigManager {
   /**
    * Get embedding configuration (cached for performance)
    */
-  getEmbeddingConfig(): InMemoriaConfig['embedding'] {
+  getEmbeddingConfig(): InMemoriaConfig["embedding"] {
     return this.config.embedding;
   }
-  
+
   /**
    * Get database path for a specific project
    * Always places the database within the analyzed project directory
@@ -139,66 +176,69 @@ export class ConfigManager {
   getDatabasePath(projectPath?: string): string {
     const basePath = projectPath || process.cwd();
     const filename = this.config.database.filename;
-    
+
     // Warn if filename contains path separators (indicates misconfiguration)
-    if (filename.includes('/') || filename.includes('\\')) {
+    if (filename.includes("/") || filename.includes("\\")) {
       Logger.warn(
-        '⚠️  Warning: IN_MEMORIA_DB_FILENAME contains path separators.\n' +
-        `   Current: "${filename}"\n` +
-        '   This may cause issues. Consider using a simple filename.\n' +
-        `   The database directory is determined by the project path: ${basePath}\n` +
-        '   Example: Set IN_MEMORIA_DB_FILENAME="in-memoria.db" instead of a path.'
+        "⚠️  Warning: IN_MEMORIA_DB_FILENAME contains path separators.\n" +
+          `   Current: "${filename}"\n` +
+          "   This may cause issues. Consider using a simple filename.\n" +
+          `   The database directory is determined by the project path: ${basePath}\n` +
+          '   Example: Set IN_MEMORIA_DB_FILENAME="in-memoria.db" instead of a path.',
       );
     }
-    
+
     const dbPath = join(basePath, filename);
     Logger.info(`📁 Database path resolved to: ${dbPath}`);
     return dbPath;
   }
-  
+
   /**
    * Update configuration at runtime
    */
   updateConfig(partial: Partial<InMemoriaConfig>): void {
     this.config = { ...this.config, ...partial };
   }
-  
+
   /**
    * Validate configuration for common issues
    */
   validateConfig(): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
-    
+
     // Validate performance settings
     if (this.config.performance.batchSize <= 0) {
-      errors.push('performance.batchSize must be greater than 0');
+      errors.push("performance.batchSize must be greater than 0");
     }
-    
+
     if (this.config.performance.maxConcurrentFiles <= 0) {
-      errors.push('performance.maxConcurrentFiles must be greater than 0');
+      errors.push("performance.maxConcurrentFiles must be greater than 0");
     }
-    
+
     // Validate API settings
     if (this.config.api.rateLimitRequests <= 0) {
-      errors.push('api.rateLimitRequests must be greater than 0');
+      errors.push("api.rateLimitRequests must be greater than 0");
     }
-    
+
     // Validate analysis settings
     if (this.config.analysis.maxFileSize <= 0) {
-      errors.push('analysis.maxFileSize must be greater than 0');
+      errors.push("analysis.maxFileSize must be greater than 0");
     }
-    
+
     // Validate database filename
-    if (!this.config.database.filename || this.config.database.filename.trim() === '') {
-      errors.push('database.filename cannot be empty');
+    if (
+      !this.config.database.filename ||
+      this.config.database.filename.trim() === ""
+    ) {
+      errors.push("database.filename cannot be empty");
     }
-    
+
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
-  
+
   /**
    * Load configuration from environment variables
    */
@@ -207,30 +247,39 @@ export class ConfigManager {
     if (process.env.IN_MEMORIA_DB_FILENAME) {
       this.config.database.filename = process.env.IN_MEMORIA_DB_FILENAME;
     }
-    
+
     // Performance configuration
     if (process.env.IN_MEMORIA_BATCH_SIZE) {
-      this.config.performance.batchSize = parseInt(process.env.IN_MEMORIA_BATCH_SIZE, 10);
+      this.config.performance.batchSize = parseInt(
+        process.env.IN_MEMORIA_BATCH_SIZE,
+        10,
+      );
     }
-    
+
     if (process.env.IN_MEMORIA_MAX_CONCURRENT) {
-      this.config.performance.maxConcurrentFiles = parseInt(process.env.IN_MEMORIA_MAX_CONCURRENT, 10);
+      this.config.performance.maxConcurrentFiles = parseInt(
+        process.env.IN_MEMORIA_MAX_CONCURRENT,
+        10,
+      );
     }
 
     // API configuration
     if (process.env.IN_MEMORIA_REQUEST_TIMEOUT) {
-      this.config.api.requestTimeout = parseInt(process.env.IN_MEMORIA_REQUEST_TIMEOUT, 10);
+      this.config.api.requestTimeout = parseInt(
+        process.env.IN_MEMORIA_REQUEST_TIMEOUT,
+        10,
+      );
     }
-    
+
     // Logging configuration
     if (process.env.IN_MEMORIA_LOG_LEVEL) {
       const level = process.env.IN_MEMORIA_LOG_LEVEL.toLowerCase();
-      if (['error', 'warn', 'info', 'debug'].includes(level)) {
+      if (["error", "warn", "info", "debug"].includes(level)) {
         this.config.logging.level = level as any;
       }
     }
-    
-    if (process.env.IN_MEMORIA_PERFORMANCE_LOGGING === 'true') {
+
+    if (process.env.IN_MEMORIA_PERFORMANCE_LOGGING === "true") {
       this.config.logging.enablePerformanceLogging = true;
     }
 
@@ -240,14 +289,20 @@ export class ConfigManager {
     }
 
     if (process.env.IN_MEMORIA_EMBEDDING_DIMENSION) {
-      const dimension = parseInt(process.env.IN_MEMORIA_EMBEDDING_DIMENSION, 10);
+      const dimension = parseInt(
+        process.env.IN_MEMORIA_EMBEDDING_DIMENSION,
+        10,
+      );
       if (!isNaN(dimension) && dimension > 0) {
         this.config.embedding.dimension = dimension;
       }
     }
 
     if (process.env.IN_MEMORIA_EMBEDDING_CACHE_SIZE) {
-      const cacheSize = parseInt(process.env.IN_MEMORIA_EMBEDDING_CACHE_SIZE, 10);
+      const cacheSize = parseInt(
+        process.env.IN_MEMORIA_EMBEDDING_CACHE_SIZE,
+        10,
+      );
       if (!isNaN(cacheSize) && cacheSize > 0) {
         this.config.embedding.cacheSize = cacheSize;
       }
@@ -255,35 +310,64 @@ export class ConfigManager {
 
     if (process.env.IN_MEMORIA_EMBEDDING_POOLING) {
       const pooling = process.env.IN_MEMORIA_EMBEDDING_POOLING.toLowerCase();
-      if (['mean', 'cls'].includes(pooling)) {
-        this.config.embedding.pooling = pooling as 'mean' | 'cls';
+      if (["mean", "cls"].includes(pooling)) {
+        this.config.embedding.pooling = pooling as "mean" | "cls";
       }
     }
 
     if (process.env.IN_MEMORIA_EMBEDDING_NORMALIZE) {
-      this.config.embedding.normalize = process.env.IN_MEMORIA_EMBEDDING_NORMALIZE === 'true';
+      this.config.embedding.normalize =
+        process.env.IN_MEMORIA_EMBEDDING_NORMALIZE === "true";
+    }
+
+    // Vector backend selection
+    if (process.env.IN_MEMORIA_VECTOR_BACKEND) {
+      const backend = process.env.IN_MEMORIA_VECTOR_BACKEND.toLowerCase();
+      if (backend === "qdrant" || backend === "surreal") {
+        this.config.vectorBackend = backend as "surreal" | "qdrant";
+      }
+    }
+
+    // Qdrant configuration
+    if (process.env.QDRANT_URL) {
+      this.config.qdrant = this.config.qdrant || {};
+      this.config.qdrant.url = process.env.QDRANT_URL;
+    }
+
+    if (process.env.QDRANT_API_KEY) {
+      this.config.qdrant = this.config.qdrant || {};
+      this.config.qdrant.apiKey = process.env.QDRANT_API_KEY;
+    }
+
+    if (process.env.QDRANT_COLLECTION) {
+      this.config.qdrant = this.config.qdrant || {};
+      this.config.qdrant.collection = process.env.QDRANT_COLLECTION;
     }
   }
-  
+
   /**
    * Get environment-specific configuration hints
    */
   getConfigurationHelp(): string[] {
     return [
-      'Environment Variables:',
-      '  IN_MEMORIA_DB_FILENAME - Database filename (default: in-memoria.db)',
-      '  IN_MEMORIA_BATCH_SIZE - File processing batch size (default: 50)',
-      '  IN_MEMORIA_MAX_CONCURRENT - Max concurrent file operations (default: 10)',
-      '  IN_MEMORIA_REQUEST_TIMEOUT - API request timeout in ms (default: 30000)',
-      '  IN_MEMORIA_LOG_LEVEL - Logging level: error|warn|info|debug (default: info)',
-      '  IN_MEMORIA_PERFORMANCE_LOGGING - Enable performance logging (default: false)',
-      '  IN_MEMORIA_EMBEDDING_MODEL - Transformer.js model (default: Xenova/all-MiniLM-L6-v2)',
-      '  IN_MEMORIA_EMBEDDING_DIMENSION - Model output dimension (default: 384)',
-      '  IN_MEMORIA_EMBEDDING_CACHE_SIZE - Embedding cache size (default: 1000)',
-      '  IN_MEMORIA_EMBEDDING_POOLING - Pooling strategy: mean|cls (default: mean)',
-      '  IN_MEMORIA_EMBEDDING_NORMALIZE - Enable L2 normalization (default: true)',
-      '',
-      'Note: Database is always created within the analyzed project directory'
+      "Environment Variables:",
+      "  IN_MEMORIA_DB_FILENAME - Database filename (default: in-memoria.db)",
+      "  IN_MEMORIA_BATCH_SIZE - File processing batch size (default: 50)",
+      "  IN_MEMORIA_MAX_CONCURRENT - Max concurrent file operations (default: 10)",
+      "  IN_MEMORIA_REQUEST_TIMEOUT - API request timeout in ms (default: 30000)",
+      "  IN_MEMORIA_LOG_LEVEL - Logging level: error|warn|info|debug (default: info)",
+      "  IN_MEMORIA_PERFORMANCE_LOGGING - Enable performance logging (default: false)",
+      "  IN_MEMORIA_EMBEDDING_MODEL - Transformer.js model (default: Xenova/all-MiniLM-L6-v2)",
+      "  IN_MEMORIA_EMBEDDING_DIMENSION - Model output dimension (default: 384)",
+      "  IN_MEMORIA_EMBEDDING_CACHE_SIZE - Embedding cache size (default: 1000)",
+      "  IN_MEMORIA_EMBEDDING_POOLING - Pooling strategy: mean|cls (default: mean)",
+      "  IN_MEMORIA_EMBEDDING_NORMALIZE - Enable L2 normalization (default: true)",
+      "  IN_MEMORIA_VECTOR_BACKEND - Vector backend: surreal|qdrant (default: surreal)",
+      "  QDRANT_URL - Qdrant endpoint (e.g., https://qdrant.example.com)",
+      "  QDRANT_API_KEY - Qdrant API key (if required)",
+      "  QDRANT_COLLECTION - Qdrant collection name (default: in-memoria)",
+      "",
+      "Note: Database is always created within the analyzed project directory",
     ];
   }
 }
