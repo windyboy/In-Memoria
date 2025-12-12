@@ -15,8 +15,8 @@ import { SemanticEngine } from '../engines/semantic-engine.js';
 import { PatternEngine } from '../engines/pattern-engine.js';
 import { SQLiteDatabase } from '../storage/sqlite-db.js';
 import { SemanticVectorDB } from '../storage/vector-db.js';
-import { validateInput, VALIDATION_SCHEMAS } from './validation.js';
 import { config } from '../config/config.js';
+import { validateInput, VALIDATION_SCHEMAS } from './validation.js';
 import { Logger } from '../utils/logger.js';
 
 export class CodeCartographerMCP {
@@ -65,7 +65,8 @@ export class CodeCartographerMCP {
         throw new Error(`Database initialization failed: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
       }
 
-      this.vectorDB = new SemanticVectorDB(); // Uses local embeddings only
+      const embeddingConfig = config.getEmbeddingConfig();
+      this.vectorDB = new SemanticVectorDB(undefined, embeddingConfig); // Uses local embeddings only
       Logger.info('Vector database initialized');
 
       // Initialize engines

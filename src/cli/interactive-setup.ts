@@ -9,6 +9,7 @@ import { ProgressTracker } from '../utils/progress-tracker.js';
 import { ConsoleProgressRenderer } from '../utils/console-progress.js';
 import { glob } from 'glob';
 import { EXTENSION_LANGUAGE_MAP } from '../utils/language-registry.js';
+import { config as globalConfig } from '../config/config.js';
 
 interface SetupConfig {
   projectName: string;
@@ -212,7 +213,8 @@ export class InteractiveSetup {
     try {
       // Initialize components
       database = new SQLiteDatabase(join(config.projectPath, 'in-memoria.db'));
-      vectorDB = new SemanticVectorDB(); // Uses local embeddings only
+      const embeddingConfig = globalConfig.getEmbeddingConfig();
+      vectorDB = new SemanticVectorDB(undefined, embeddingConfig); // Uses local embeddings only
       semanticEngine = new SemanticEngine(database, vectorDB);
       patternEngine = new PatternEngine(database);
 

@@ -22,6 +22,14 @@ export interface SemanticSearchResult {
   similarity: number;
 }
 
+export interface EmbeddingConfig {
+  model?: string;
+  dimension?: number;
+  cacheSize?: number;
+  pooling?: 'mean' | 'cls';
+  normalize?: boolean;
+}
+
 interface CodeDocument {
   id?: string;
   code: string;
@@ -37,21 +45,134 @@ export class SemanticVectorDB {
   private initialized: boolean = false;
   private localEmbeddingPipeline: any; // Use any to avoid complex typing issues
 
+  // Configurable embedding settings
+  private embeddingModel: string;
+  private embeddingDimension: number;
+  private embeddingCacheSize: number;
+  private embeddingPooling: 'mean' | 'cls';
+  private embeddingNormalize: boolean;
+
   // Real vector operations with caching
-  private embeddingCache = new Map<string, number[]>();
-  private readonly EMBEDDING_CACHE_SIZE = 1000;
-  private readonly LOCAL_EMBEDDING_DIMENSION = 384; // All-MiniLM-L6-v2 dimension
+  private embeddingCache = new Map<string, { embedding: number[]; size: number; timestamp: number }>();
+  private cacheMemoryUsage = 0;
+  private maxCacheMemoryMB = 100; // 100MB default memory limit
 
   // Embedding progress tracking
   private hasLoggedEmbeddingStart = false;
 
-  constructor(_apiKey?: string) {
+  constructor(_apiKey?: string, embeddingConfig?: EmbeddingConfig) {
     this.db = new Surreal({
       engines: (SurrealNodeModule as any).surrealdbNodeEngines(),
     });
 
+    // Initialize embedding configuration
+    const requestedModel = embeddingConfig?.model ||
+                          process.env.IN_MEMORIA_EMBEDDING_MODEL ||
+                          'Xenova/all-MiniLM-L6-v2';
+
+    // Validate model against allowlist
+    this.embeddingModel = this.validateModel(requestedModel);
+
+    this.embeddingDimension = embeddingConfig?.dimension ||
+                             parseInt(process.env.IN_MEMORIA_EMBEDDING_DIMENSION || '', 10) ||
+                             this.getModelDimension(this.embeddingModel);
+
+    this.embeddingCacheSize = embeddingConfig?.cacheSize ||
+                             parseInt(process.env.IN_MEMORIA_EMBEDDING_CACHE_SIZE || '', 10) ||
+                             1000;
+
+    this.embeddingPooling = embeddingConfig?.pooling ||
+                           (process.env.IN_MEMORIA_EMBEDDING_POOLING as 'mean' | 'cls') ||
+                           'mean';
+
+    this.embeddingNormalize = embeddingConfig?.normalize !== undefined ?
+                             embeddingConfig.normalize :
+                             process.env.IN_MEMORIA_EMBEDDING_NORMALIZE !== 'false'; // Default true
+
+    // Calculate memory limit based on embedding dimension and cache size
+    // Each embedding: dimension * 4 bytes (float32) * cacheSize
+    const bytesPerEmbedding = this.embeddingDimension * 4;
+    const totalBytes = bytesPerEmbedding * this.embeddingCacheSize;
+    this.maxCacheMemoryMB = Math.ceil(totalBytes / (1024 * 1024)) + 10; // Add 10MB buffer
+
+    Logger.info(`📊 Embedding cache configured: ${this.embeddingCacheSize} entries, ~${this.maxCacheMemoryMB}MB memory limit`);
+
     // API key parameter kept for backwards compatibility but unused
-    this.initializeLocalEmbeddings();
+    // Pipeline initialization is now lazy (deferred until first use)
+  }
+
+  /**
+   * Validate model name against allowlist
+   * Returns validated model name or falls back to default
+   */
+  private validateModel(requestedModel: string): string {
+    const allowedModels = [
+      'Xenova/all-MiniLM-L6-v2',
+      'Xenova/all-MiniLM-L12-v2',
+      'Xenova/paraphrase-MiniLM-L6-v2',
+      'Xenova/all-mpnet-base-v2',
+      'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
+      'Xenova/msmarco-distilbert-base-v4',
+      'Xenova/multi-qa-MiniLM-L6-cos-v1'
+    ];
+
+    const defaultModel = 'Xenova/all-MiniLM-L6-v2';
+
+    // Check if model is in allowlist
+    if (allowedModels.includes(requestedModel)) {
+      return requestedModel;
+    }
+
+    // Check if model starts with Xenova/ (allow custom Xenova models with warning)
+    if (requestedModel.startsWith('Xenova/')) {
+      Logger.warn(`⚠️  Using custom Xenova model: ${requestedModel}`);
+      Logger.warn(`   This model is not in the official allowlist.`);
+      Logger.warn(`   Supported models: ${allowedModels.join(', ')}`);
+      return requestedModel;
+    }
+
+    // Fall back to default with warning
+    Logger.warn(`⚠️  Model "${requestedModel}" is not supported.`);
+    Logger.warn(`   Falling back to default: ${defaultModel}`);
+    Logger.warn(`   Supported models: ${allowedModels.join(', ')}`);
+    return defaultModel;
+  }
+
+  /**
+   * Get the current embedding model configuration
+   */
+  getEmbeddingModel(): string {
+    return this.embeddingModel;
+  }
+
+  /**
+   * Get the current embedding dimension
+   */
+  getEmbeddingDimension(): number {
+    return this.embeddingDimension;
+  }
+
+  /**
+   * Get the current embedding cache size
+   */
+  getEmbeddingCacheSize(): number {
+    return this.embeddingCacheSize;
+  }
+
+  /**
+   * Get the expected dimension for a given model
+   */
+  private getModelDimension(modelName: string): number {
+    const dimensions: Record<string, number> = {
+      'Xenova/all-MiniLM-L6-v2': 384,
+      'Xenova/all-MiniLM-L12-v2': 384,
+      'Xenova/paraphrase-MiniLM-L6-v2': 384,
+      'Xenova/all-mpnet-base-v2': 768,
+      'Xenova/paraphrase-multilingual-MiniLM-L12-v2': 384,
+      'Xenova/msmarco-distilbert-base-v4': 768,
+      'Xenova/multi-qa-MiniLM-L6-cos-v1': 384,
+    };
+    return dimensions[modelName] || 384; // Default fallback
   }
 
   /**
@@ -59,15 +180,14 @@ export class SemanticVectorDB {
    */
   private async initializeLocalEmbeddings(): Promise<void> {
     try {
-      Logger.info('🔧 Initializing local embedding pipeline...');
-      // Use all-MiniLM-L6-v2 for quality local embeddings
+      Logger.info(`🔧 Initializing ${this.embeddingModel} embedding pipeline (${this.embeddingDimension}d)...`);
       this.localEmbeddingPipeline = await pipeline(
         'feature-extraction',
-        'Xenova/all-MiniLM-L6-v2'
+        this.embeddingModel
       );
-      Logger.info('✅ Local embedding pipeline ready');
+      Logger.info(`✅ ${this.embeddingModel} pipeline ready (${this.embeddingDimension}d)`);
     } catch (error: unknown) {
-      Logger.warn('⚠️  Failed to initialize local embeddings:', error instanceof Error ? error.message : String(error));
+      Logger.warn(`⚠️ Failed to initialize ${this.embeddingModel}:`, error instanceof Error ? error.message : String(error));
       Logger.info('📝 Will use fallback local embedding method');
     }
   }
@@ -292,8 +412,11 @@ export class SemanticVectorDB {
   private async generateRealSemanticEmbedding(code: string): Promise<number[]> {
     // Check cache first
     const cacheKey = this.createCacheKey(code);
-    if (this.embeddingCache.has(cacheKey)) {
-      return this.embeddingCache.get(cacheKey)!;
+    const cached = this.embeddingCache.get(cacheKey);
+    if (cached) {
+      // Update timestamp for LRU
+      cached.timestamp = Date.now();
+      return cached.embedding;
     }
 
     // Log once at start of embedding process
@@ -314,19 +437,32 @@ export class SemanticVectorDB {
    * Get local embeddings using transformers.js or fallback method
    */
   private async getLocalEmbedding(code: string): Promise<number[]> {
+    // Lazily initialize pipeline if not already done
+    if (!this.localEmbeddingPipeline) {
+      await this.initializeLocalEmbeddings();
+    }
+
     if (this.localEmbeddingPipeline) {
       try {
         const cleanCode = this.preprocessCodeForEmbedding(code);
         const result = await this.localEmbeddingPipeline(cleanCode, {
-          pooling: 'mean',
-          normalize: true
+          pooling: this.embeddingPooling,
+          normalize: this.embeddingNormalize
         });
 
         // Convert tensor to array
         const embedding = Array.from(result.data) as number[];
+
+        // Validate dimension matches expected
+        if (embedding.length !== this.embeddingDimension) {
+          Logger.warn(`⚠️ Embedding dimension mismatch: got ${embedding.length}, expected ${this.embeddingDimension}`);
+        }
+
         return embedding;
       } catch (error: unknown) {
-        Logger.warn('⚠️  Local embedding pipeline failed:', error instanceof Error ? error.message : String(error));
+        Logger.warn(`⚠️ ${this.embeddingModel} pipeline failed:`, error instanceof Error ? error.message : String(error));
+        // Clear pipeline to force fallback on next call
+        this.localEmbeddingPipeline = null;
       }
     }
 
@@ -338,25 +474,25 @@ export class SemanticVectorDB {
    * Generate advanced local semantic embeddings using multiple techniques
    */
   private generateAdvancedLocalEmbedding(code: string): number[] {
-    const embedding = new Array(this.LOCAL_EMBEDDING_DIMENSION).fill(0);
+    const embedding = new Array(this.embeddingDimension).fill(0);
 
     // 1. Structural features (25%)
     const structural = this.extractStructuralFeatures(code);
-    const structuralSize = Math.floor(this.LOCAL_EMBEDDING_DIMENSION * 0.25);
+    const structuralSize = Math.floor(this.embeddingDimension * 0.25);
     for (let i = 0; i < Math.min(structuralSize, structural.length); i++) {
       embedding[i] = structural[i];
     }
 
     // 2. Semantic token features (35%)
     const semantic = this.extractSemanticFeatures(code);
-    const semanticSize = Math.floor(this.LOCAL_EMBEDDING_DIMENSION * 0.35);
+    const semanticSize = Math.floor(this.embeddingDimension * 0.35);
     for (let i = 0; i < Math.min(semanticSize, semantic.length); i++) {
       embedding[structuralSize + i] = semantic[i];
     }
 
     // 3. AST-based features (25%)
     const ast = this.extractASTFeatures(code);
-    const astSize = Math.floor(this.LOCAL_EMBEDDING_DIMENSION * 0.25);
+    const astSize = Math.floor(this.embeddingDimension * 0.25);
     const astStart = structuralSize + semanticSize;
     for (let i = 0; i < Math.min(astSize, ast.length); i++) {
       embedding[astStart + i] = ast[i];
@@ -364,7 +500,7 @@ export class SemanticVectorDB {
 
     // 4. Context features (15%)
     const context = this.extractContextFeatures(code);
-    const contextSize = this.LOCAL_EMBEDDING_DIMENSION - astStart - astSize;
+    const contextSize = this.embeddingDimension - astStart - astSize;
     const contextStart = astStart + astSize;
     for (let i = 0; i < Math.min(contextSize, context.length); i++) {
       embedding[contextStart + i] = context[i];
@@ -649,17 +785,53 @@ export class SemanticVectorDB {
   }
 
   /**
-   * Cache embedding with LRU eviction
+   * Cache embedding with memory-aware LRU eviction
    */
   private cacheEmbedding(key: string, embedding: number[]): void {
-    if (this.embeddingCache.size >= this.EMBEDDING_CACHE_SIZE) {
-      // Remove oldest entry
-      const firstKey = this.embeddingCache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.embeddingCache.delete(firstKey);
+    const embeddingSize = embedding.length * 4; // 4 bytes per float32
+    const cacheEntry = {
+      embedding,
+      size: embeddingSize,
+      timestamp: Date.now()
+    };
+
+    // Check if we need to evict entries
+    while (this.cacheMemoryUsage + embeddingSize > this.maxCacheMemoryMB * 1024 * 1024) {
+      this.evictOldestCacheEntry();
+    }
+
+    // Add to cache
+    this.embeddingCache.set(key, cacheEntry);
+    this.cacheMemoryUsage += embeddingSize;
+
+    // Also enforce count-based limit as fallback
+    if (this.embeddingCache.size > this.embeddingCacheSize) {
+      this.evictOldestCacheEntry();
+    }
+  }
+
+  /**
+   * Evict the oldest cache entry
+   */
+  private evictOldestCacheEntry(): void {
+    if (this.embeddingCache.size === 0) return;
+
+    let oldestKey: string | null = null;
+    let oldestTimestamp = Infinity;
+
+    // Find oldest entry
+    for (const [key, entry] of this.embeddingCache.entries()) {
+      if (entry.timestamp < oldestTimestamp) {
+        oldestTimestamp = entry.timestamp;
+        oldestKey = key;
       }
     }
-    this.embeddingCache.set(key, embedding);
+
+    if (oldestKey) {
+      const entry = this.embeddingCache.get(oldestKey)!;
+      this.cacheMemoryUsage -= entry.size;
+      this.embeddingCache.delete(oldestKey);
+    }
   }
 
   /**

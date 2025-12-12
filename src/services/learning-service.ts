@@ -43,7 +43,8 @@ export class LearningService {
     // Create project-specific database and engines
     const projectDbPath = config.getDatabasePath(path);
     const projectDatabase = new SQLiteDatabase(projectDbPath);
-    const projectVectorDB = new SemanticVectorDB(process.env.OPENAI_API_KEY);
+    const embeddingConfig = config.getEmbeddingConfig();
+    const projectVectorDB = new SemanticVectorDB(process.env.OPENAI_API_KEY, embeddingConfig);
     const projectSemanticEngine = new SemanticEngine(projectDatabase, projectVectorDB);
     const projectPatternEngine = new PatternEngine(projectDatabase);
 

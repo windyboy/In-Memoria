@@ -141,7 +141,8 @@ async function startWatcher(path: string): Promise<void> {
 
   // Initialize components
   const database = new SQLiteDatabase(config.getDatabasePath(path));
-  const vectorDB = new SemanticVectorDB(); // Uses local embeddings only
+  const embeddingConfig = config.getEmbeddingConfig();
+  const vectorDB = new SemanticVectorDB(undefined, embeddingConfig); // Uses local embeddings only
   const semanticEngine = new SemanticEngine(database, vectorDB);
   const patternEngine = new PatternEngine(database);
   const analyzer = new ChangeAnalyzer(semanticEngine, patternEngine, database);
@@ -258,7 +259,8 @@ async function analyzeCodebase(path: string): Promise<void> {
   console.log(`Analyzing codebase: ${path}`);
 
   const database = new SQLiteDatabase(config.getDatabasePath(path));
-  const vectorDB = new SemanticVectorDB(); // Uses local embeddings only
+  const embeddingConfig = config.getEmbeddingConfig();
+  const vectorDB = new SemanticVectorDB(undefined, embeddingConfig); // Uses local embeddings only
   const semanticEngine = new SemanticEngine(database, vectorDB);
   const patternEngine = new PatternEngine(database);
 

@@ -2,6 +2,7 @@ import { SQLiteDatabase } from '../storage/sqlite-db.js';
 import { SemanticVectorDB } from '../storage/vector-db.js';
 import { SemanticEngine } from '../engines/semantic-engine.js';
 import { PatternEngine } from '../engines/pattern-engine.js';
+import { config } from '../config/config.js';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -210,7 +211,8 @@ export class DebugTools {
       }
 
       const database = new SQLiteDatabase(dbPath);
-      const vectorDB = new SemanticVectorDB(process.env.OPENAI_API_KEY);
+      const embeddingConfig = config.getEmbeddingConfig();
+      const vectorDB = new SemanticVectorDB(process.env.OPENAI_API_KEY, embeddingConfig);
       const semanticEngine = new SemanticEngine(database, vectorDB);
       const patternEngine = new PatternEngine(database);
 

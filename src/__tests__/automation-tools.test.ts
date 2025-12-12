@@ -28,7 +28,7 @@ describe('AutomationTools', () => {
     writeFileSync(join(projectDir, 'utils.ts'), 'export function add(a: number, b: number) { return a + b; }');
 
     database = new SQLiteDatabase(join(tempDir, 'test.db'));
-    vectorDB = new SemanticVectorDB();
+    vectorDB = new SemanticVectorDB(); // Uses default config
     semanticEngine = new SemanticEngine(database, vectorDB);
     patternEngine = new PatternEngine(database);
     automationTools = new AutomationTools(semanticEngine, patternEngine, database);

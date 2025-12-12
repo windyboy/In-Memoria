@@ -44,6 +44,15 @@ export interface InMemoriaConfig {
     level: 'error' | 'warn' | 'info' | 'debug';
     enablePerformanceLogging: boolean;
   };
+
+  // Embedding configuration
+  embedding: {
+    model: string;
+    dimension: number;
+    cacheSize: number;
+    pooling: 'mean' | 'cls';
+    normalize: boolean;
+  };
 }
 
 const DEFAULT_CONFIG: InMemoriaConfig = {
@@ -85,6 +94,14 @@ const DEFAULT_CONFIG: InMemoriaConfig = {
   logging: {
     level: 'info',
     enablePerformanceLogging: false
+  },
+
+  embedding: {
+    model: 'Xenova/all-MiniLM-L6-v2',
+    dimension: 384,
+    cacheSize: 1000,
+    pooling: 'mean',
+    normalize: true
   }
 };
 
@@ -106,6 +123,13 @@ export class ConfigManager {
   
   getConfig(): InMemoriaConfig {
     return { ...this.config };
+  }
+
+  /**
+   * Get embedding configuration (cached for performance)
+   */
+  getEmbeddingConfig(): InMemoriaConfig['embedding'] {
+    return this.config.embedding;
   }
   
   /**
@@ -209,6 +233,36 @@ export class ConfigManager {
     if (process.env.IN_MEMORIA_PERFORMANCE_LOGGING === 'true') {
       this.config.logging.enablePerformanceLogging = true;
     }
+
+    // Embedding configuration
+    if (process.env.IN_MEMORIA_EMBEDDING_MODEL) {
+      this.config.embedding.model = process.env.IN_MEMORIA_EMBEDDING_MODEL;
+    }
+
+    if (process.env.IN_MEMORIA_EMBEDDING_DIMENSION) {
+      const dimension = parseInt(process.env.IN_MEMORIA_EMBEDDING_DIMENSION, 10);
+      if (!isNaN(dimension) && dimension > 0) {
+        this.config.embedding.dimension = dimension;
+      }
+    }
+
+    if (process.env.IN_MEMORIA_EMBEDDING_CACHE_SIZE) {
+      const cacheSize = parseInt(process.env.IN_MEMORIA_EMBEDDING_CACHE_SIZE, 10);
+      if (!isNaN(cacheSize) && cacheSize > 0) {
+        this.config.embedding.cacheSize = cacheSize;
+      }
+    }
+
+    if (process.env.IN_MEMORIA_EMBEDDING_POOLING) {
+      const pooling = process.env.IN_MEMORIA_EMBEDDING_POOLING.toLowerCase();
+      if (['mean', 'cls'].includes(pooling)) {
+        this.config.embedding.pooling = pooling as 'mean' | 'cls';
+      }
+    }
+
+    if (process.env.IN_MEMORIA_EMBEDDING_NORMALIZE) {
+      this.config.embedding.normalize = process.env.IN_MEMORIA_EMBEDDING_NORMALIZE === 'true';
+    }
   }
   
   /**
@@ -223,6 +277,11 @@ export class ConfigManager {
       '  IN_MEMORIA_REQUEST_TIMEOUT - API request timeout in ms (default: 30000)',
       '  IN_MEMORIA_LOG_LEVEL - Logging level: error|warn|info|debug (default: info)',
       '  IN_MEMORIA_PERFORMANCE_LOGGING - Enable performance logging (default: false)',
+      '  IN_MEMORIA_EMBEDDING_MODEL - Transformer.js model (default: Xenova/all-MiniLM-L6-v2)',
+      '  IN_MEMORIA_EMBEDDING_DIMENSION - Model output dimension (default: 384)',
+      '  IN_MEMORIA_EMBEDDING_CACHE_SIZE - Embedding cache size (default: 1000)',
+      '  IN_MEMORIA_EMBEDDING_POOLING - Pooling strategy: mean|cls (default: mean)',
+      '  IN_MEMORIA_EMBEDDING_NORMALIZE - Enable L2 normalization (default: true)',
       '',
       'Note: Database is always created within the analyzed project directory'
     ];
