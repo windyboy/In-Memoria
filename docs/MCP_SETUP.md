@@ -32,8 +32,8 @@ In-Memoria is an intelligent MCP (Model Context Protocol) server that provides c
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/in-memoria.git
-cd in-memoria
+git clone https://github.com/your-org/In-Memoria.git
+cd In-Memoria
 ```
 
 ### 2. Install Dependencies
@@ -515,8 +515,8 @@ jobs:
 
 ```bash
 # Clone and setup
-git clone https://github.com/your-org/in-memoria.git
-cd in-memoria
+git clone https://github.com/your-org/In-Memoria.git
+cd In-Memoria
 bun install
 
 # Development build
@@ -538,8 +538,8 @@ npm run build
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/in-memoria/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/in-memoria/discussions)
+- **Issues**: [GitHub Issues](https://github.com/your-org/In-Memoria/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/your-org/In-Memoria/discussions)
 - **Documentation**: [Full API Docs](./API_REFERENCE.md)
 
 ## License

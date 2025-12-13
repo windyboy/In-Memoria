@@ -315,19 +315,19 @@ Build artifacts (`node_modules/`, `dist/`, `.next/`, etc.) are automatically fil
 
 ### We Need Your Help
 
-This is open-source infrastructure for AI-assisted development. Currently a solo project by [@pi22by7](https://github.com/pi22by7), but contributions are not just welcome, they're essential.
+This is open-source infrastructure for AI-assisted development. Currently a solo project by [@windyboy](https://github.com/windyboy), but contributions are not just welcome, they're essential.
 
 **Before contributing code**, please:
 
-- Check the [GitHub Projects board](https://github.com/pi22by7/in-memoria/projects) to see what's planned
+- Check the [GitHub Projects board](https://github.com/windyboy/In-Memoria/projects) to see what's planned
 - Join [Discord](https://discord.gg/6mGsM4qkYm) to discuss your ideas (@pi_22by7)
-- [Open an issue](https://github.com/pi22by7/in-memoria/issues) to discuss the feature/fix
-- Email me at [talk@pi22by7.me](mailto:talk@pi22by7.me) for larger contributions
+- [Open an issue](https://github.com/windyboy/In-Memoria/issues) to discuss the feature/fix
+- Email me at [talk@windyboy.me](mailto:talk@windyboy.me) for larger contributions
 
 **Ways to contribute**:
 
-- 🐛 **Report bugs** - Found something broken? [Open an issue](https://github.com/pi22by7/in-memoria/issues)
-- 💡 **Suggest features** - Have ideas? Discuss on [Discord](https://discord.gg/6mGsM4qkYm) or [GitHub Discussions](https://github.com/pi22by7/in-memoria/discussions)
+- 🐛 **Report bugs** - Found something broken? [Open an issue](https://github.com/windyboy/In-Memoria/issues)
+- 💡 **Suggest features** - Have ideas? Discuss on [Discord](https://discord.gg/6mGsM4qkYm) or [GitHub Discussions](https://github.com/windyboy/In-Memoria/discussions)
 - 🔧 **Submit PRs** - Code contributions are always appreciated (discuss first!)
 - 📖 **Improve docs** - Help make this easier to understand
 - 🧪 **Test on your codebase** - Try it out and tell us what breaks
@@ -371,8 +371,8 @@ In Memoria works for both individual developers and teams:
 ## Build from Source
 
 ```bash
-git clone https://github.com/pi22by7/in-memoria
-cd in-memoria
+git clone https://github.com/windyboy/In-Memoria
+cd In-Memoria
 npm install
 npm run build
 ```
@@ -413,7 +413,7 @@ A: It improves with codebase size and consistency. Projects with established pat
 A: Minimal. Initial learning takes time (proportional to codebase size), but subsequent queries are fast. File watching enables incremental updates. Smart filtering skips build artifacts automatically.
 
 **Q: What if analysis fails or produces weird results?**
-A: [Open an issue](https://github.com/pi22by7/in-memoria/issues) with details. Built-in timeouts and circuit breakers handle most edge cases, but real-world codebases are messy and we need your feedback to improve.
+A: [Open an issue](https://github.com/windyboy/In-Memoria/issues) with details. Built-in timeouts and circuit breakers handle most edge cases, but real-world codebases are messy and we need your feedback to improve.
 
 **Q: Can I use this in production?**
 A: You _can_, but remember this is v0.5.x. Expect rough edges. Test thoroughly. Report issues. We're working toward stability but aren't there yet.
@@ -437,16 +437,16 @@ We're following a phased approach:
 - 📋 **Phase 7**: Multi-project Intelligence
 - 📋 **Phase 8**: Collaboration Features
 
-See [GitHub Projects](https://github.com/pi22by7/in-memoria/projects) for detailed tracking.
+See [GitHub Projects](https://github.com/windyboy/In-Memoria/projects) for detailed tracking.
 
 ## Community & Support
 
-**Project maintained by**: [@pi22by7](https://github.com/pi22by7)
+**Project maintained by**: [@windyboy](https://github.com/windyboy)
 
 - 💬 **Discord**: [discord.gg/6mGsM4qkYm](https://discord.gg/6mGsM4qkYm) - Join the community, ask questions, discuss improvements (ping @pi_22by7)
-- 📧 **Email**: [talk@pi22by7.me](mailto:talk@pi22by7.me) - For private inquiries or larger contribution discussions
-- 🐛 **Issues**: [GitHub Issues](https://github.com/pi22by7/in-memoria/issues) - Report bugs and request features
-- 💡 **Discussions**: [GitHub Discussions](https://github.com/pi22by7/in-memoria/discussions) - General discussions and Q&A
+- 📧 **Email**: [talk@windyboy.me](mailto:talk@windyboy.me) - For private inquiries or larger contribution discussions
+- 🐛 **Issues**: [GitHub Issues](https://github.com/windyboy/In-Memoria/issues) - Report bugs and request features
+- 💡 **Discussions**: [GitHub Discussions](https://github.com/windyboy/In-Memoria/discussions) - General discussions and Q&A
 - 📖 **Documentation**: See [AGENT.md](AGENT.md) for AI agent instructions
 - 🤝 **Contributing**: Check [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines
 
@@ -456,7 +456,7 @@ See [GitHub Projects](https://github.com/pi22by7/in-memoria/projects) for detail
 
 MIT - see [LICENSE](LICENSE)
 
-Built with ❤️ by [@pi22by7](https://github.com/pi22by7) for the AI-assisted development community.
+Built with ❤️ by [@windyboy](https://github.com/windyboy) for the AI-assisted development community.
 
 ---
 
@@ -466,4 +466,4 @@ Built with ❤️ by [@pi22by7](https://github.com/pi22by7) for the AI-assisted 
 
 _In memoria: in memory. Because your AI assistant should remember._
 
-**Questions? Ideas?** Join us on [Discord](https://discord.gg/6mGsM4qkYm) or reach out at [talk@pi22by7.me](mailto:talk@pi22by7.me)
+**Questions? Ideas?** Join us on [Discord](https://discord.gg/6mGsM4qkYm) or reach out at [talk@windyboy.me](mailto:talk@windyboy.me)

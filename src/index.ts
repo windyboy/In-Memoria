@@ -31,7 +31,7 @@ function showVersion(): void {
     const version = getVersion();
     console.log(`In Memoria v${version}`);
     console.log("Persistent Intelligence Infrastructure for AI Agents");
-    console.log("https://github.com/pi22by7/in-memoria");
+    console.log("https://github.com/windyboy/In-Memoria");
 }
 
 async function main() {
@@ -480,7 +480,7 @@ Examples:
   in-memoria analyze ./src
   in-memoria init
 
-For more information, visit: https://github.com/pi22by7/in-memoria
+For more information, visit: https://github.com/windyboy/In-Memoria
 `);
 }
 

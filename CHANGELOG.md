@@ -69,10 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Truncated code examples to 2 per pattern, max 150 characters each
   - Reduced response size from ~58,000 tokens to ~2,000-5,000 tokens (90% reduction)
   - Applied limits across all pattern-fetching methods in pattern engine
-  - Issue: [#21](https://github.com/anthropics/in-memoria/issues/21)
+  - Issue: [#21](https://github.com/windyboy/In-Memoria/issues/21)
 - **Interactive setup password input** – Fixed password masking in terminal
   - Clear terminal echo before writing asterisk to prevent double display (e.g., 'y*')
-  - Issue: [#21](https://github.com/anthropics/in-memoria/issues/21)
+  - Issue: [#21](https://github.com/windyboy/In-Memoria/issues/21)
 
 ### ✨ **Added**
 

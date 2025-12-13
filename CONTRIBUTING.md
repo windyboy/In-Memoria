@@ -2,15 +2,15 @@
 
 Welcome! I'm excited that you're interested in contributing to In Memoria. This document provides guidelines and information for contributors.
 
-**Project Maintainer**: [@pi22by7](https://github.com/pi22by7) (Piyush Airani)
+**Project Maintainer**: [@windyboy](https://github.com/windyboy) (Piyush Airani)
 
 **Important**: This is currently a solo project. Before starting work on any feature or significant change, please:
 
-1. **Check existing work**: Review [GitHub Projects](https://github.com/pi22by7/in-memoria/projects) to see what's planned
+1. **Check existing work**: Review [GitHub Projects](https://github.com/windyboy/In-Memoria/projects) to see what's planned
 2. **Discuss first**: Reach out via:
    - Discord: [discord.gg/6mGsM4qkYm](https://discord.gg/6mGsM4qkYm) (@pi_22by7)
-   - Email: [talk@pi22by7.me](mailto:talk@pi22by7.me)
-   - GitHub Issue: [Create an issue](https://github.com/pi22by7/in-memoria/issues/new)
+   - Email: [talk@windyboy.me](mailto:talk@windyboy.me)
+   - GitHub Issue: [Create an issue](https://github.com/windyboy/In-Memoria/issues/new)
 3. **Get alignment**: Make sure your contribution aligns with the project direction
 
 This helps avoid duplicate work and ensures we're all moving in the same direction!
@@ -39,8 +39,8 @@ In Memoria is building the future of persistent AI intelligence for development.
 
 ```bash
 # 1. Fork and clone the repository
-git clone https://github.com/YOUR-USERNAME/in-memoria.git
-cd in-memoria
+git clone https://github.com/YOUR-USERNAME/In-Memoria.git
+cd In-Memoria
 
 # 2. Switch to Node.js 20 LTS or 24+ (if using nvm)
 nvm use 20  # or nvm use 24
@@ -65,7 +65,7 @@ npm run dev
 ### Project Structure Overview
 
 ```
-in-memoria/
+In-Memoria/
 ├── src/                          # TypeScript source code
 │   ├── mcp-server/              # MCP server and tools
 │   ├── engines/                 # TypeScript interfaces to Rust
@@ -424,7 +424,7 @@ Add any other context or screenshots about the feature request.
 ### Communication Channels
 
 - **Discord**: [discord.gg/6mGsM4qkYm](https://discord.gg/6mGsM4qkYm) - Best for real-time discussions, questions, and brainstorming (@pi_22by7)
-- **Email**: [talk@pi22by7.me](mailto:talk@pi22by7.me) - For private inquiries or detailed technical discussions
+- **Email**: [talk@windyboy.me](mailto:talk@windyboy.me) - For private inquiries or detailed technical discussions
 - **GitHub Issues**: Bug reports and feature requests
 - **GitHub Discussions**: General questions and ideas
 
@@ -461,4 +461,4 @@ Thank you for your interest in contributing to In Memoria! Whether you're fixing
 
 **Remember**: Reach out on [Discord](https://discord.gg/6mGsM4qkYm) (@pi_22by7) before starting significant work. Let's build the future of persistent AI intelligence for development together! 🚀
 
-— Piyush (@pi22by7)
+— Piyush (@windyboy)

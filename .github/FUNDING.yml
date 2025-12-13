@@ -7,7 +7,11 @@
 # In Memoria's 93% token reduction architecture helps reduce costs across the entire ecosystem.
 
 # GitHub Sponsors
-github: [pi22by7]
+github: [windyboy]
 
 # PayPal - One-time or recurring donations
-custom: ["https://paypal.me/piyushairani", "https://github.com/pi22by7/in-memoria/blob/main/funding.json"]
+custom:
+    [
+        "https://paypal.me/piyushairani",
+        "https://github.com/windyboy/In-Memoria/blob/main/funding.json",
+    ]

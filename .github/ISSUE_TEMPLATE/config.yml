@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 💬 Discussions
-    url: https://github.com/pi22by7/in-memoria/discussions
-    about: Ask questions, share ideas, or discuss In-Memoria's AI development approach
-  - name: 📚 Documentation
-    url: https://github.com/pi22by7/in-memoria/blob/main/README.md
-    about: Read the documentation for setup, usage, and architecture details
+    - name: 💬 Discussions
+      url: https://github.com/windyboy/In-Memoria/discussions
+      about: Ask questions, share ideas, or discuss In-Memoria's AI development approach
+    - name: 📚 Documentation
+      url: https://github.com/windyboy/In-Memoria/blob/main/README.md
+      about: Read the documentation for setup, usage, and architecture details
