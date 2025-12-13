@@ -3,9 +3,9 @@
 #[cfg(feature = "napi-bindings")]
 use napi_derive::napi;
 
-use crate::types::{ParseError, AstNode, Symbol, ParseResult};
+use crate::types::{AstNode, ParseError, ParseResult, Symbol};
 use std::collections::HashMap;
-use tree_sitter::{Language, Parser, Tree, Query, QueryCursor, Node, StreamingIterator};
+use tree_sitter::{Language, Node, Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 // Import tree-sitter language constants
 use tree_sitter_javascript::LANGUAGE as tree_sitter_javascript;
@@ -14,13 +14,14 @@ use tree_sitter_rust::LANGUAGE as tree_sitter_rust;
 use tree_sitter_typescript::LANGUAGE_TYPESCRIPT as tree_sitter_typescript;
 
 // Import new tree-sitter languages
-use tree_sitter_sequel::LANGUAGE as tree_sitter_sql;
+use tree_sitter_c::LANGUAGE as tree_sitter_c;
+use tree_sitter_c_sharp::LANGUAGE as tree_sitter_csharp;
+use tree_sitter_cpp::LANGUAGE as tree_sitter_cpp;
 use tree_sitter_go::LANGUAGE as tree_sitter_go;
 use tree_sitter_java::LANGUAGE as tree_sitter_java;
-use tree_sitter_c::LANGUAGE as tree_sitter_c;
-use tree_sitter_cpp::LANGUAGE as tree_sitter_cpp;
-use tree_sitter_c_sharp::LANGUAGE as tree_sitter_csharp;
+use tree_sitter_kotlin_ng::LANGUAGE as tree_sitter_kotlin;
 use tree_sitter_php::LANGUAGE_PHP as tree_sitter_php;
+use tree_sitter_sequel::LANGUAGE as tree_sitter_sql;
 use tree_sitter_svelte_ng::LANGUAGE as tree_sitter_svelte;
 
 /// Manages tree-sitter parsers for different programming languages
@@ -71,9 +72,9 @@ impl ParserManager {
 
         // Rust parser
         let mut rust_parser = Parser::new();
-        rust_parser.set_language(&tree_sitter_rust.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set Rust language: {}", e))
-        })?;
+        rust_parser
+            .set_language(&tree_sitter_rust.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set Rust language: {}", e)))?;
         self.parsers.insert("rust".to_string(), rust_parser);
 
         // Python parser
@@ -87,59 +88,70 @@ impl ParserManager {
 
         // SQL parser
         let mut sql_parser = Parser::new();
-        sql_parser.set_language(&tree_sitter_sql.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set SQL language: {}", e))
-        })?;
+        sql_parser
+            .set_language(&tree_sitter_sql.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set SQL language: {}", e)))?;
         self.parsers.insert("sql".to_string(), sql_parser);
 
         // Go parser
         let mut go_parser = Parser::new();
-        go_parser.set_language(&tree_sitter_go.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set Go language: {}", e))
-        })?;
+        go_parser
+            .set_language(&tree_sitter_go.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set Go language: {}", e)))?;
         self.parsers.insert("go".to_string(), go_parser);
 
         // Java parser
         let mut java_parser = Parser::new();
-        java_parser.set_language(&tree_sitter_java.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set Java language: {}", e))
-        })?;
+        java_parser
+            .set_language(&tree_sitter_java.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set Java language: {}", e)))?;
         self.parsers.insert("java".to_string(), java_parser);
 
         // C parser
         let mut c_parser = Parser::new();
-        c_parser.set_language(&tree_sitter_c.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set C language: {}", e))
-        })?;
+        c_parser
+            .set_language(&tree_sitter_c.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set C language: {}", e)))?;
         self.parsers.insert("c".to_string(), c_parser);
 
         // C++ parser
         let mut cpp_parser = Parser::new();
-        cpp_parser.set_language(&tree_sitter_cpp.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set C++ language: {}", e))
-        })?;
+        cpp_parser
+            .set_language(&tree_sitter_cpp.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set C++ language: {}", e)))?;
         self.parsers.insert("cpp".to_string(), cpp_parser);
 
         // C# parser
         let mut csharp_parser = Parser::new();
-        csharp_parser.set_language(&tree_sitter_csharp.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set C# language: {}", e))
-        })?;
+        csharp_parser
+            .set_language(&tree_sitter_csharp.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set C# language: {}", e)))?;
         self.parsers.insert("csharp".to_string(), csharp_parser);
 
         // Svelte parser (using svelte-ng)
         let mut svelte_parser = Parser::new();
-        svelte_parser.set_language(&tree_sitter_svelte.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set Svelte language: {}", e))
-        })?;
+        svelte_parser
+            .set_language(&tree_sitter_svelte.into())
+            .map_err(|e| {
+                ParseError::from_reason(format!("Failed to set Svelte language: {}", e))
+            })?;
         self.parsers.insert("svelte".to_string(), svelte_parser);
 
         // PHP parser
         let mut php_parser = Parser::new();
-        php_parser.set_language(&tree_sitter_php.into()).map_err(|e| {
-            ParseError::from_reason(format!("Failed to set PHP language: {}", e))
-        })?;
+        php_parser
+            .set_language(&tree_sitter_php.into())
+            .map_err(|e| ParseError::from_reason(format!("Failed to set PHP language: {}", e)))?;
         self.parsers.insert("php".to_string(), php_parser);
+
+        // Kotlin parser
+        let mut kotlin_parser = Parser::new();
+        kotlin_parser
+            .set_language(&tree_sitter_kotlin.into())
+            .map_err(|e| {
+                ParseError::from_reason(format!("Failed to set Kotlin language: {}", e))
+            })?;
+        self.parsers.insert("kotlin".to_string(), kotlin_parser);
 
         Ok(())
     }
@@ -147,7 +159,21 @@ impl ParserManager {
     /// Initialize common queries for different languages
     fn initialize_queries(&mut self) -> Result<(), ParseError> {
         // Initialize common queries for different languages
-        let languages = ["typescript", "javascript", "rust", "python", "sql", "go", "java", "c", "cpp", "csharp", "svelte"];
+        let languages = [
+            "typescript",
+            "javascript",
+            "rust",
+            "python",
+            "sql",
+            "go",
+            "java",
+            "c",
+            "cpp",
+            "csharp",
+            "svelte",
+            "php",
+            "kotlin",
+        ];
 
         for lang in &languages {
             let lang_obj = self.get_tree_sitter_language(lang)?;
@@ -157,6 +183,7 @@ impl ParserManager {
                 "typescript" | "javascript" => "(function_declaration) @function",
                 "rust" => "(function_item) @function",
                 "python" => "(function_definition) @function",
+                "kotlin" => "(function_declaration) @function",
                 _ => continue,
             };
 
@@ -204,6 +231,7 @@ impl ParserManager {
             "csharp" => Ok(tree_sitter_csharp.into()),
             "svelte" => Ok(tree_sitter_svelte.into()),
             "php" => Ok(tree_sitter_php.into()),
+            "kotlin" => Ok(tree_sitter_kotlin.into()),
             _ => Err(ParseError::from_reason(format!(
                 "Unsupported language: {}",
                 language
@@ -687,7 +715,7 @@ mod tests {
     fn test_parser_manager_creation() {
         let manager = ParserManager::new();
         assert!(manager.is_ok());
-        
+
         let manager = manager.unwrap();
         assert!(!manager.parsers.is_empty());
     }
@@ -696,7 +724,7 @@ mod tests {
     fn test_available_languages() {
         let manager = ParserManager::new().unwrap();
         let languages = manager.available_languages();
-        
+
         assert!(languages.contains(&"typescript".to_string()));
         assert!(languages.contains(&"javascript".to_string()));
         assert!(languages.contains(&"rust".to_string()));
@@ -708,12 +736,13 @@ mod tests {
         assert!(languages.contains(&"cpp".to_string()));
         assert!(languages.contains(&"csharp".to_string()));
         assert!(languages.contains(&"svelte".to_string()));
+        assert!(languages.contains(&"kotlin".to_string()));
     }
 
     #[test]
     fn test_supports_language() {
         let manager = ParserManager::new().unwrap();
-        
+
         assert!(manager.supports_language("typescript"));
         assert!(manager.supports_language("javascript"));
         assert!(manager.supports_language("rust"));
@@ -725,7 +754,8 @@ mod tests {
         assert!(manager.supports_language("cpp"));
         assert!(manager.supports_language("csharp"));
         assert!(manager.supports_language("svelte"));
-        
+        assert!(manager.supports_language("kotlin"));
+
         assert!(!manager.supports_language("unknown"));
         assert!(!manager.supports_language(""));
     }
@@ -733,7 +763,7 @@ mod tests {
     #[test]
     fn test_get_tree_sitter_language() {
         let manager = ParserManager::new().unwrap();
-        
+
         // Test all supported languages
         assert!(manager.get_tree_sitter_language("typescript").is_ok());
         assert!(manager.get_tree_sitter_language("javascript").is_ok());
@@ -747,7 +777,8 @@ mod tests {
         assert!(manager.get_tree_sitter_language("csharp").is_ok());
         assert!(manager.get_tree_sitter_language("svelte").is_ok());
         assert!(manager.get_tree_sitter_language("php").is_ok());
-        
+        assert!(manager.get_tree_sitter_language("kotlin").is_ok());
+
         // Test unsupported language
         assert!(manager.get_tree_sitter_language("unknown").is_err());
     }
@@ -755,12 +786,12 @@ mod tests {
     #[test]
     fn test_parse_simple_code() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         // Test TypeScript parsing
         let ts_code = "function test() { return 42; }";
         let ts_result = manager.parse(ts_code, "typescript");
         assert!(ts_result.is_ok());
-        
+
         let tree = ts_result.unwrap();
         assert_eq!(tree.root_node().kind(), "program");
         assert!(tree.root_node().child_count() > 0);
@@ -769,11 +800,11 @@ mod tests {
     #[test]
     fn test_parse_javascript() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         let js_code = "const x = 5;";
         let result = manager.parse(js_code, "javascript");
         assert!(result.is_ok());
-        
+
         let tree = result.unwrap();
         assert_eq!(tree.root_node().kind(), "program");
     }
@@ -781,11 +812,11 @@ mod tests {
     #[test]
     fn test_parse_rust() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         let rust_code = "fn main() { println!(\"Hello\"); }";
         let result = manager.parse(rust_code, "rust");
         assert!(result.is_ok());
-        
+
         let tree = result.unwrap();
         assert_eq!(tree.root_node().kind(), "source_file");
     }
@@ -793,11 +824,11 @@ mod tests {
     #[test]
     fn test_parse_python() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         let python_code = "def hello():\n    return 'world'";
         let result = manager.parse(python_code, "python");
         assert!(result.is_ok());
-        
+
         let tree = result.unwrap();
         assert_eq!(tree.root_node().kind(), "module");
     }
@@ -805,11 +836,11 @@ mod tests {
     #[test]
     fn test_parse_sql() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         let sql_code = "SELECT * FROM users WHERE id = 1;";
         let result = manager.parse(sql_code, "sql");
         assert!(result.is_ok());
-        
+
         let tree = result.unwrap();
         assert_eq!(tree.root_node().kind(), "program");
     }
@@ -817,11 +848,23 @@ mod tests {
     #[test]
     fn test_parse_go() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         let go_code = "package main\n\nfunc main() {\n    println(\"Hello\")\n}";
         let result = manager.parse(go_code, "go");
         assert!(result.is_ok());
-        
+
+        let tree = result.unwrap();
+        assert_eq!(tree.root_node().kind(), "source_file");
+    }
+
+    #[test]
+    fn test_parse_kotlin() {
+        let mut manager = ParserManager::new().unwrap();
+
+        let kotlin_code = "fun main() {\n    println(\"Hello\")\n}";
+        let result = manager.parse(kotlin_code, "kotlin");
+        assert!(result.is_ok());
+
         let tree = result.unwrap();
         assert_eq!(tree.root_node().kind(), "source_file");
     }
@@ -829,7 +872,7 @@ mod tests {
     #[test]
     fn test_parse_unsupported_language() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         let result = manager.parse("some code", "unknown");
         assert!(result.is_err());
     }
@@ -837,14 +880,14 @@ mod tests {
     #[test]
     fn test_parse_invalid_code() {
         let mut manager = ParserManager::new().unwrap();
-        
+
         // Test with syntactically invalid JavaScript
         let invalid_js = "function {{{ invalid syntax";
         let result = manager.parse(invalid_js, "javascript");
-        
+
         // Tree-sitter should still parse this (with error nodes), not fail entirely
         assert!(result.is_ok());
-        
+
         let tree = result.unwrap();
         assert_eq!(tree.root_node().kind(), "program");
     }
@@ -852,18 +895,33 @@ mod tests {
     #[test]
     fn test_all_languages_initialized() {
         let manager = ParserManager::new().unwrap();
-        
+
         // Verify all expected languages are present
         let expected_languages = vec![
-            "typescript", "javascript", "rust", "python", "sql",
-            "go", "java", "c", "cpp", "csharp", "svelte", "php"
+            "typescript",
+            "javascript",
+            "rust",
+            "python",
+            "sql",
+            "go",
+            "java",
+            "c",
+            "cpp",
+            "csharp",
+            "svelte",
+            "php",
+            "kotlin",
         ];
-        
+
         for lang in expected_languages {
-            assert!(manager.supports_language(lang), "Language {} should be supported", lang);
+            assert!(
+                manager.supports_language(lang),
+                "Language {} should be supported",
+                lang
+            );
         }
-        
+
         // Should have exactly these languages
-        assert_eq!(manager.available_languages().len(), 12);
+        assert_eq!(manager.available_languages().len(), 13);
     }
 }

@@ -390,7 +390,7 @@ async function initializeProject(path: string): Promise<void> {
 
     // Create default configuration
     const defaultConfig = {
-        version: "0.6.0",
+        version: "0.7.0",
         intelligence: {
             enableRealTimeAnalysis: true,
             enablePatternLearning: true,
@@ -448,39 +448,53 @@ async function initializeProject(path: string): Promise<void> {
 
 function showHelp(): void {
     console.log(`
-In Memoria - Persistent Intelligence Infrastructure for AI Agents
+In Memoria v${getVersion()} - Persistent Intelligence Infrastructure for AI Agents
+
+In Memoria provides AI assistants with persistent memory and intelligence about your codebase,
+enabling semantic search, pattern recognition, and contextual understanding across sessions.
 
 Usage: in-memoria <command> [options]
 
-Commands:
-  server                    Start the MCP server for AI agent integration
-  setup --interactive       Interactive setup wizard (recommended for first time)
-  check [path] [options]    Run diagnostics and troubleshooting
-  watch [path]             Start file watcher for real-time intelligence updates
-  learn [path]             Learn from codebase and build intelligence
-  analyze [path]           Analyze codebase and show insights
-  init [path]              Initialize In Memoria for a project (basic)
-  version, --version, -v    Show version information
+Core Commands:
+  server [path]             Start MCP server for AI assistant integration (Claude, Copilot, etc.)
+  setup --interactive       Run interactive setup wizard for configuration and dependencies
 
-Diagnostic Options (for 'check' command):
-  --verbose                Show detailed diagnostic information
-  --validate               Validate intelligence data consistency
-  --performance            Analyze performance characteristics
-  --no-database            Skip database diagnostics
-  --no-intelligence        Skip intelligence diagnostics
-  --no-filesystem          Skip filesystem diagnostics
+Development Commands:
+  learn [path]              Analyze codebase and build semantic intelligence database
+  analyze [path]            Show insights about codebase structure and patterns
+  watch [path]              Monitor file changes and update intelligence in real-time
 
-Examples:
-  in-memoria setup --interactive    # Recommended for first-time setup
-  in-memoria server
-  in-memoria check --verbose       # Full diagnostics with details
-  in-memoria check --validate      # Check data integrity
-  in-memoria watch ./src
-  in-memoria learn ./my-project
-  in-memoria analyze ./src
-  in-memoria init
+Utility Commands:
+  check, debug [path] [opts] Run diagnostics and health checks
+  init [path]               Initialize In Memoria configuration for a project
+  version, --version, -v    Display version information
 
-For more information, visit: https://github.com/windyboy/In-Memoria
+Diagnostic Options (for 'check'/'debug' commands):
+  --verbose                 Show detailed diagnostic output
+  --validate                Validate data integrity and consistency
+  --performance             Analyze system performance metrics
+  --no-database             Skip database connectivity checks
+  --no-intelligence         Skip intelligence data validation
+  --no-filesystem           Skip filesystem access checks
+
+Quick Start Examples:
+  in-memoria setup --interactive    # First-time setup (recommended)
+  in-memoria learn .                # Build intelligence from current directory
+  in-memoria server                 # Start MCP server for AI assistants
+
+Advanced Examples:
+  in-memoria server ./my-project    # Start server scoped to specific project
+  in-memoria check --verbose        # Full system diagnostics
+  in-memoria watch ./src            # Watch source directory for changes
+  in-memoria analyze ./lib          # Analyze library code insights
+
+Environment Variables:
+  OPENAI_API_KEY           Optional: Enable OpenAI embeddings (falls back to local)
+  IN_MEMORIA_DB_PATH       Custom database location
+  IN_MEMORIA_LOG_LEVEL     Set logging level (error, warn, info, debug)
+
+For documentation, visit: https://github.com/windyboy/In-Memoria
+For AI agent instructions, see: AGENT.md
 `);
 }
 

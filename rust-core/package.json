@@ -1,27 +1,27 @@
 {
-  "name": "in-memoria-core",
-  "version": "0.6.0",
-  "description": "Rust core for In Memoria",
-  "main": "index.js",
-  "types": "index.d.ts",
-  "napi": {
-    "binaryName": "in-memoria-core",
-    "targets": [
-      "x86_64-pc-windows-msvc",
-      "x86_64-unknown-linux-gnu",
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin"
-    ]
-  },
-  "license": "MIT",
-  "devDependencies": {
-    "@napi-rs/cli": "^2.16.0"
-  },
-  "engines": {
-    "node": ">= 10"
-  },
-  "scripts": {
-    "build": "napi build --platform --release --features napi-bindings",
-    "build:debug": "napi build --platform --features napi-bindings"
-  }
+    "name": "in-memoria-core",
+    "version": "0.7.0",
+    "description": "Rust core for In Memoria",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "napi": {
+        "binaryName": "in-memoria-core",
+        "targets": [
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin"
+        ]
+    },
+    "license": "MIT",
+    "devDependencies": {
+        "@napi-rs/cli": "^2.16.0"
+    },
+    "engines": {
+        "node": ">= 10"
+    },
+    "scripts": {
+        "build": "napi build --platform --release --features napi-bindings",
+        "build:debug": "napi build --platform --features napi-bindings"
+    }
 }

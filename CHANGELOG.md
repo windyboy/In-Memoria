@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ✨ Added
+
+- **Kotlin language support** - Added tree-sitter parser for Kotlin files (.kt) with symbol extraction, function/method queries, and pattern learning integration
+- **Markdown language support** - Added tree-sitter parser for Markdown files (.md) with document structure analysis and AST parsing
+
 ## [0.7.0] - 2025-11-13
 
 ### 🛡️ **Security Hardening & Path Validation**

@@ -288,6 +288,8 @@ Native AST parsing via tree-sitter for:
 - C#
 - Svelte
 - SQL
+- Kotlin
+- Markdown
 
 Build artifacts (`node_modules/`, `dist/`, `.next/`, etc.) are automatically filtered out.
 
