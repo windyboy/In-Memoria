@@ -1,43 +1,31 @@
 {
-  "version": "0.6.0",
-  "project": {
-    "name": "In-Memoria",
-    "languages": [
-      "typescript",
-      "javascript",
-      "rust",
-      "sql",
-      "php"
-    ]
-  },
-  "intelligence": {
-    "enableRealTimeAnalysis": true,
-    "enablePatternLearning": true,
-    "vectorEmbeddings": true
-  },
-  "watching": {
-    "patterns": [
-      "**/*.ts",
-      "**/*.tsx",
-      "**/*.js",
-      "**/*.jsx",
-      "**/*.rs"
-    ],
-    "ignored": [
-      "**/node_modules/**",
-      "**/.git/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/target/**"
-    ],
-    "debounceMs": 500
-  },
-  "mcp": {
-    "serverPort": 3000,
-    "enableAllTools": true
-  },
-  "setup": {
-    "createdAt": "2025-12-12T15:49:47.959Z",
-    "setupVersion": "interactive-v1"
-  }
+    "version": "0.7.0",
+    "project": {
+        "name": "In-Memoria",
+        "languages": ["typescript", "javascript", "rust", "sql", "php"]
+    },
+    "intelligence": {
+        "enableRealTimeAnalysis": true,
+        "enablePatternLearning": true,
+        "vectorEmbeddings": true
+    },
+    "watching": {
+        "patterns": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.rs"],
+        "ignored": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/target/**"
+        ],
+        "debounceMs": 500
+    },
+    "mcp": {
+        "serverPort": 3000,
+        "enableAllTools": true
+    },
+    "setup": {
+        "createdAt": "2025-12-12T15:49:47.959Z",
+        "setupVersion": "interactive-v1"
+    }
 }

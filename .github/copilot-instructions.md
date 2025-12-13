@@ -47,6 +47,8 @@ In Memoria learns from codebases and provides:
 - **Pattern recognition** - Discover coding patterns and best practices
 - **Smart file routing** - Navigate to relevant files from vague requests
 - **Coding approach predictions** - Get implementation suggestions based on learned patterns
+- **Security hardening** - Path validation, rate limiting, and circuit breaker resilience
+- **Unified search engine** - Consolidated semantic, text, and pattern search capabilities
 
 ## How to Use In Memoria MCP Tools
 
@@ -310,6 +312,9 @@ const similar = await use_mcp_tool('in-memoria', 'search_codebase', {
 ❌ **Don't use text search for concepts** - Use `semantic` search for meaning-based queries
 ❌ **Don't ignore pattern recommendations** - They reflect actual codebase conventions
 ❌ **Don't re-learn unnecessarily** - Check `blueprint.learningStatus` before forcing re-learning
+❌ **Don't use absolute paths** - PathValidator enforces relative paths within project boundaries
+❌ **Don't abuse tool calls** - Rate limiting protects against excessive requests (default 100/min)
+❌ **Don't rely on external services** - Circuit breaker provides automatic fallback to local storage
 
 ## 💡 Pro Tips
 
@@ -359,7 +364,7 @@ const similar = await use_mcp_tool('in-memoria', 'search_codebase', {
 ## 📚 Additional Resources
 
 - Full API documentation: See tool schemas in `src/mcp-server/tools/`
-- Implementation roadmap: `IMPLEMENTATION_ROADMAP.md`
+- Security documentation: `SECURITY.md`
 - Architecture overview: `README.md`
 
 ---

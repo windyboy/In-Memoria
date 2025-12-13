@@ -1,23 +1,23 @@
 {
-  "name": "@in-memoria/win32-x64",
-  "version": "0.6.0",
-  "description": "Windows x64 native bindings for In Memoria",
-  "main": "in-memoria-core.win32-x64-msvc.node",
-  "files": [
-    "*.node"
-  ],
-  "license": "MIT",
-  "engines": {
-    "node": ">= 18"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/pi22by7/in-memoria.git"
-  },
-  "os": [
-    "win32"
-  ],
-  "cpu": [
-    "x64"
-  ]
+    "name": "@in-memoria/win32-x64",
+    "version": "0.7.0",
+    "description": "Windows x64 native bindings for In Memoria",
+    "main": "in-memoria-core.win32-x64-msvc.node",
+    "files": [
+        "*.node"
+    ],
+    "license": "MIT",
+    "engines": {
+        "node": ">= 18"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/pi22by7/in-memoria.git"
+    },
+    "os": [
+        "win32"
+    ],
+    "cpu": [
+        "x64"
+    ]
 }

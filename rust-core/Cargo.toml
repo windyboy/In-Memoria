@@ -1,6 +1,6 @@
 [package]
 name = "in-memoria-core"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 
 [lib]
@@ -12,7 +12,7 @@ napi-bindings = ["dep:napi", "dep:napi-derive"]
 
 # Language support features - allows selective compilation
 all-languages = [
-  "javascript", "typescript", "python", "rust-lang", "go", 
+  "javascript", "typescript", "python", "rust-lang", "go",
   "java", "c", "cpp", "csharp", "sql", "svelte", "php"
 ]
 core-languages = ["javascript", "typescript", "python", "rust-lang"]
@@ -25,7 +25,7 @@ rust-lang = ["dep:tree-sitter-rust"]
 go = ["dep:tree-sitter-go"]
 java = ["dep:tree-sitter-java"]
 c = ["dep:tree-sitter-c"]
-cpp = ["dep:tree-sitter-cpp"] 
+cpp = ["dep:tree-sitter-cpp"]
 csharp = ["dep:tree-sitter-c-sharp"]
 sql = ["dep:tree-sitter-sequel"]
 svelte = ["dep:tree-sitter-svelte-ng"]

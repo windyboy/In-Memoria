@@ -33,7 +33,7 @@ In Memoria is an MCP server that learns from your actual codebase and remembers 
 
 Think of it as giving your AI pair programmer a notepad that doesn't get wiped clean every time you restart the session.
 
-**Current version: 0.6.0** - [See what's changed](CHANGELOG.md)
+**Current version: 0.7.0** - [See what's changed](CHANGELOG.md)
 
 ### What It Does
 
@@ -145,7 +145,11 @@ In Memoria is built on Rust + TypeScript, using the Model Context Protocol to co
 
 **TypeScript Layer** - MCP server and orchestration:
 
-- 13 specialized tools for AI assistants (organized into 4 categories)
+- **SearchEngine** - Unified semantic, text, and pattern-based search across codebases
+- **PathValidator** - Security hardening with path traversal protection and project boundary enforcement
+- **RateLimiter** - DoS protection with configurable sliding-window rate limiting for MCP tools
+- **CircuitBreaker** - Resilience with automatic fallback to local storage when external services fail
+- 13 specialized tools for AI assistants (organized into 4 categories with extensible registry)
 - SQLite for structured data, SurrealDB with SurrealKV for persistent vector embeddings
 - File watching for incremental updates
 - Smart routing that maps features to files
@@ -299,6 +303,8 @@ Build artifacts (`node_modules/`, `dist/`, `.next/`, etc.) are automatically fil
 - ✅ MCP integration with Claude Desktop/Code
 - ✅ Cross-platform support (Linux, macOS, Windows)
 - ✅ Token-efficient responses
+- ✅ Security hardening with path validation and rate limiting
+- ✅ Resilience with circuit breaker patterns and automatic fallbacks
 
 ### Known Limitations
 
@@ -426,9 +432,10 @@ We're following a phased approach:
 - ✅ **Phase 2**: Work Context & Session Memory (v0.5.0)
 - ✅ **Phase 3**: Smart File Routing (v0.5.0)
 - ✅ **Phase 4**: Tool Consolidation (v0.5.0)
-- 🚧 **Phase 5**: Enhanced Vector Search & Embeddings
-- 📋 **Phase 6**: Multi-project Intelligence
-- 📋 **Phase 7**: Collaboration Features
+- ✅ **Phase 5**: Security Hardening & Architecture Refinement (v0.7.0)
+- 🚧 **Phase 6**: Enhanced Vector Search & Embeddings
+- 📋 **Phase 7**: Multi-project Intelligence
+- 📋 **Phase 8**: Collaboration Features
 
 See [GitHub Projects](https://github.com/pi22by7/in-memoria/projects) for detailed tracking.
 
@@ -455,7 +462,7 @@ Built with ❤️ by [@pi22by7](https://github.com/pi22by7) for the AI-assisted 
 
 **Try it**: `npx in-memoria server`
 
-**Latest release**: [v0.6.0](CHANGELOG.md) - Smooth progress tracking and Phase 1-4 complete
+**Latest release**: [v0.7.0](CHANGELOG.md) - Security hardening and architecture improvements
 
 _In memoria: in memory. Because your AI assistant should remember._
 

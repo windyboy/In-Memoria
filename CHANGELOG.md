@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2025-11-13
+
+### 🛡️ **Security Hardening & Path Validation**
+
+- **Path traversal protection** - Added comprehensive path validation across all MCP tools and CLI entry points
+  - New `PathValidator` utility class with `isSafeProjectPath()` method prevents directory traversal attacks
+  - Applied to `analyze_codebase`, `search_codebase`, `generate_documentation`, and CLI server startup
+  - Relative path enforcement - all paths must be relative to prevent absolute path exploits
+  - Project root validation - ensures operations stay within intended project boundaries
+
+### 🔒 **Rate Limiting & DoS Protection**
+
+- **MCP tool rate limiting** - Added sliding-window rate limiter to protect against excessive tool calls
+  - Configurable limits (default: 100 requests per minute per client)
+  - Blocking behavior prevents abuse while maintaining responsiveness
+  - New `RateLimiter` utility class with configurable window size and request limits
+
+### 🏗️ **Circuit Breaker Resilience**
+
+- **Vector DB initialization fallback** - Enhanced circuit breaker with automatic fallback to local SurrealDB
+  - Primary backend failure triggers fallback to local storage
+  - Transparent operation - users unaware of backend failures
+  - Improved reliability for external vector database dependencies
+
+### 🔧 **Architecture Improvements**
+
+- **SearchEngine module extraction** - Refactored monolithic search logic into dedicated `SearchEngine` class
+  - New `src/engines/search-engine.ts` with semantic, pattern, and text search methods
+  - Improved maintainability and testability of search functionality
+  - Added comprehensive unit tests (21 test cases covering all search types)
+
+- **Tool registry refactoring** - Replaced monolithic switch statement with extensible tool registry pattern
+  - New `initializeToolRegistry()` function with Map-based tool routing
+  - Easier to add new tools and maintain existing ones
+  - Improved code organization and extensibility
+
+### 🧹 **Code Quality & Maintenance**
+
+- **CLI behavior cleanup** - Removed forced `process.exit(0)` from `learnCodebase` for better composability
+  - Enables use in scripts and testing without terminating parent processes
+  - Improved error handling and graceful operation completion
+
+- **TypeScript strict compliance** - Fixed all type errors in newly extracted modules
+  - Proper type safety for `SearchEngine` query validation
+  - Enhanced error handling with typed exceptions
+
+### 🧪 **Testing Enhancements**
+
+- **SearchEngine unit tests** - Comprehensive test suite for all search functionality
+  - Mocked dependencies for isolated testing
+  - Coverage of semantic, pattern, and text search behaviors
+  - Error handling and edge case validation
+
 ## [0.6.0] - 2025-11-12
 
 ### 🐛 **Fixed**
