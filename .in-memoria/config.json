@@ -3,23 +3,25 @@
   "project": {
     "name": "In-Memoria",
     "languages": [
-      "rust",
       "typescript",
-      "javascript"
+      "javascript",
+      "rust",
+      "sql",
+      "php"
     ]
   },
   "intelligence": {
     "enableRealTimeAnalysis": true,
     "enablePatternLearning": true,
-    "vectorEmbeddings": false
+    "vectorEmbeddings": true
   },
   "watching": {
     "patterns": [
-      "**/*.rs",
       "**/*.ts",
       "**/*.tsx",
       "**/*.js",
-      "**/*.jsx"
+      "**/*.jsx",
+      "**/*.rs"
     ],
     "ignored": [
       "**/node_modules/**",
@@ -35,7 +37,7 @@
     "enableAllTools": true
   },
   "setup": {
-    "createdAt": "2025-10-24T12:51:36.224Z",
+    "createdAt": "2025-12-12T15:49:47.959Z",
     "setupVersion": "interactive-v1"
   }
 }

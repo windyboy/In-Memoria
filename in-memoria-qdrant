@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# In-Memoria Qdrant Wrapper Script
+# This script ensures Qdrant environment variables are set before running In-Memoria
+# Usage: ./in-memoria-qdrant <command> [args...]
+# Example: ./in-memoria-qdrant learn /path/to/project
+
+# Set Qdrant environment variables
+export IN_MEMORIA_VECTOR_BACKEND=qdrant
+export QDRANT_URL=${QDRANT_URL:-http://localhost:6333}
+export QDRANT_API_KEY=${QDRANT_API_KEY:-}
+export QDRANT_COLLECTION=${QDRANT_COLLECTION:-in-memoria}
+
+# Display configuration
+echo "🔧 In-Memoria Qdrant Configuration:"
+echo "   Vector Backend: $IN_MEMORIA_VECTOR_BACKEND"
+echo "   Qdrant URL: $QDRANT_URL"
+echo "   Collection: $QDRANT_COLLECTION"
+if [ -n "$QDRANT_API_KEY" ]; then
+    echo "   API Key: Set (hidden)"
+else
+    echo "   API Key: Not set"
+fi
+echo ""
+
+# Check if Qdrant is accessible
+echo "🔍 Checking Qdrant connectivity..."
+if curl -s "$QDRANT_URL/health" > /dev/null 2>&1; then
+    echo "✅ Qdrant is running at $QDRANT_URL"
+else
+    echo "❌ Qdrant is not accessible at $QDRANT_URL"
+    echo "   Make sure Qdrant is running and the URL is correct"
+    exit 1
+fi
+
+# Execute the original in-memoria command with environment variables
+echo "🚀 Executing: in-memoria $@"
+echo ""
+exec in-memoria "$@"
