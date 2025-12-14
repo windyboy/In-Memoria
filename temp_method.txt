@@ -1,0 +1,7 @@
+    private async getPointUUID(pointId: string): Promise<string | null> {
+        const results = await this.client.scroll(this.collectionName, {
+            limit: 1,
+            filter: { must: [{ key: "pointId", match: { value: pointId } }] }
+        });
+        return results.points.length > 0 ? String(results.points[0].id) : null;
+    }
