@@ -277,36 +277,54 @@ export class SemanticEngine {
       }
 
       // Add timeout protection for the entire learning process with periodic progress updates
-      let progressTimer: NodeJS.Timeout | null = null;
+      const abortController = new AbortController();
       const timeoutPromise = new Promise<never>((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          abortController.abort();
+          reject(
+            new Error(
+              "Learning process timed out after 5 minutes. This can happen with very large Svelte/Vue codebases.",
+            ),
+          );
+        }, 300000); // 5 minutes
+
+        // Clean up timeout if aborted
+        abortController.signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
+        });
+      });
+
+      // Progress tracking with AbortController
+      let progressTimer: NodeJS.Timeout | null = null;
+      if (progressCallback && estimatedFiles > 0) {
         let elapsed = 0;
-        const timeoutDuration = 300000; // 5 minutes
         const progressInterval = 2000; // Update every 2 seconds
 
         progressTimer = setInterval(() => {
+          if (abortController.signal.aborted) {
+            if (progressTimer) clearInterval(progressTimer);
+            return;
+          }
+
           elapsed += progressInterval;
 
-          if (elapsed >= timeoutDuration) {
-            if (progressTimer) clearInterval(progressTimer);
-            reject(
-              new Error(
-                "Learning process timed out after 5 minutes. This can happen with very large Svelte/Vue codebases.",
-              ),
-            );
-          } else if (progressCallback && estimatedFiles > 0) {
-            // Provide estimated progress based on time (rough heuristic)
-            const estimatedProgress = Math.min(
-              Math.floor((elapsed / timeoutDuration) * estimatedFiles),
-              estimatedFiles - 1,
-            );
-            progressCallback(
-              estimatedProgress,
-              estimatedFiles,
-              `Analyzing codebase... (${Math.floor(elapsed / 1000)}s elapsed)`,
-            );
-          }
+          // Provide estimated progress based on time (rough heuristic)
+          const estimatedProgress = Math.min(
+            Math.floor((elapsed / 300000) * estimatedFiles), // 300000 = 5 minutes
+            estimatedFiles - 1,
+          );
+          progressCallback(
+            estimatedProgress,
+            estimatedFiles,
+            `Analyzing codebase... (${Math.floor(elapsed / 1000)}s elapsed)`,
+          );
         }, progressInterval);
-      });
+
+        // Clean up progress timer on abort
+        abortController.signal.addEventListener('abort', () => {
+          if (progressTimer) clearInterval(progressTimer);
+        });
+      }
 
       let concepts: any[];
       try {
@@ -315,10 +333,8 @@ export class SemanticEngine {
           timeoutPromise,
         ]);
       } finally {
-        // CRITICAL: Clear progress timer to prevent hanging
-        if (progressTimer !== null) {
-          clearInterval(progressTimer);
-        }
+        // Ensure cleanup happens
+        abortController.abort();
       }
 
       if (progressCallback && estimatedFiles > 0) {

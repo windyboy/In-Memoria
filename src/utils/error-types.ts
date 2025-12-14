@@ -42,12 +42,25 @@ export enum ErrorCode {
   PERMISSION_DENIED = 2005,
   INVALID_PATH = 2006,
 
-  // Parsing/Analysis Errors (3000-3999)
-  LANGUAGE_UNSUPPORTED = 3001,
-  PARSE_FAILED = 3002,
-  TREE_SITTER_FAILED = 3003,
-  CONCEPT_EXTRACTION_FAILED = 3004,
-  PATTERN_ANALYSIS_FAILED = 3005,
+   // Parsing/Analysis Errors (3000-3999)
+   LANGUAGE_UNSUPPORTED = 3001,
+   PARSE_FAILED = 3002,
+   TREE_SITTER_FAILED = 3003,
+   CONCEPT_EXTRACTION_FAILED = 3004,
+   PATTERN_ANALYSIS_FAILED = 3005,
+   DOCUMENTATION_GENERATION_FAILED = 3006,
+
+   // Validation Errors (4000-4999)
+   PATH_TRAVERSAL_DETECTED = 4001,
+   INVALID_FILE_TYPE = 4002,
+   MISSING_REQUIRED_PARAMETER = 4003,
+   INVALID_PARAMETER_VALUE = 4004,
+   SCHEMA_VALIDATION_FAILED = 4005,
+
+   // Search/Indexing Errors (5000-5999)
+   SEARCH_INDEX_CORRUPTED = 5001,
+   VECTOR_SEARCH_FAILED = 5002,
+   SEMANTIC_INDEX_FAILED = 5003,
   SEMANTIC_ANALYSIS_FAILED = 3006,
 
   // Configuration Errors (4000-4999)
@@ -75,13 +88,19 @@ export enum ErrorSeverity {
 }
 
 export interface ErrorContext {
-  operation?: string;
-  filePath?: string;
-  language?: string;
-  component?: string;
-  timestamp?: Date;
-  stack?: string;
-  additionalInfo?: Record<string, any>;
+    operation?: string;
+    component?: string;
+    filePath?: string;
+    language?: string;
+    requestId?: string;
+    userId?: string;
+    sessionId?: string;
+    resourceId?: string;
+    query?: string;
+    context?: ErrorContext;
+    recoveryActions?: RecoveryAction[];
+    timestamp?: Date | string;
+    [key: string]: any;
 }
 
 export interface RecoveryAction {
@@ -201,7 +220,7 @@ export class InMemoriaError extends Error {
         type: this.name,
         context: this.context,
         recoveryActions: this.recoveryActions,
-        timestamp: this.context.timestamp?.toISOString(),
+        timestamp: this.context.timestamp instanceof Date ? this.context.timestamp.toISOString() : this.context.timestamp,
         requestId: requestId?.toString(),
         internalCode: this.code,
         severity: this.severity,
@@ -600,7 +619,131 @@ export class ErrorUtils {
         { description: 'Check the error details above' },
         { description: 'Try running with debug mode', command: 'in-memoria debug --verbose' }
       ],
-      error
+       error
+     );
+   }
+}
+
+/**
+ * Specific error classes for common error scenarios
+ */
+
+export class ValidationError extends InMemoriaError {
+  constructor(
+    message: string,
+    userMessage: string,
+    context: ErrorContext = {},
+    originalError?: Error
+  ) {
+    super(
+      ErrorCode.INVALID_PARAMETER_VALUE,
+      message,
+      userMessage,
+      ErrorSeverity.LOW,
+      context,
+      [
+        { description: 'Check the parameter values and try again' },
+        { description: 'Refer to the API documentation for correct parameter formats' }
+      ],
+      originalError
     );
+    this.name = 'ValidationError';
+  }
+}
+
+export class PathValidationError extends InMemoriaError {
+  constructor(
+    path: string,
+    reason: string,
+    context: ErrorContext = {},
+    originalError?: Error
+  ) {
+    super(
+      ErrorCode.PATH_TRAVERSAL_DETECTED,
+      `Invalid path: ${path} - ${reason}`,
+      `The provided path is invalid or contains security risks: ${reason}`,
+      ErrorSeverity.HIGH,
+      { ...context, filePath: path },
+      [
+        { description: 'Use absolute paths within your project directory' },
+        { description: 'Avoid paths with ".." or other traversal sequences' }
+      ],
+      originalError
+    );
+    this.name = 'PathValidationError';
+  }
+}
+
+export class AnalysisError extends InMemoriaError {
+  constructor(
+    operation: string,
+    message: string,
+    userMessage: string,
+    context: ErrorContext = {},
+    originalError?: Error
+  ) {
+    super(
+      ErrorCode.SEMANTIC_ANALYSIS_FAILED,
+      message,
+      userMessage,
+      ErrorSeverity.MEDIUM,
+      { ...context, operation },
+      [
+        { description: 'Check if the file exists and is readable' },
+        { description: 'Verify the file is a supported language type' },
+        { description: 'Try running analysis on a smaller file first' }
+      ],
+      originalError
+    );
+    this.name = 'AnalysisError';
+  }
+}
+
+export class DocumentationError extends InMemoriaError {
+  constructor(
+    message: string,
+    userMessage: string,
+    context: ErrorContext = {},
+    originalError?: Error
+  ) {
+    super(
+      ErrorCode.DOCUMENTATION_GENERATION_FAILED,
+      message,
+      userMessage,
+      ErrorSeverity.MEDIUM,
+      context,
+      [
+        { description: 'Ensure the codebase has been analyzed first' },
+        { description: 'Check if semantic concepts were extracted successfully' },
+        { description: 'Try with a smaller codebase or different path' }
+      ],
+      originalError
+    );
+    this.name = 'DocumentationError';
+  }
+}
+
+export class SearchError extends InMemoriaError {
+  constructor(
+    query: string,
+    message: string,
+    userMessage: string,
+    context: ErrorContext = {},
+    originalError?: Error
+  ) {
+    super(
+      ErrorCode.VECTOR_SEARCH_FAILED,
+      message,
+      userMessage,
+      ErrorSeverity.MEDIUM,
+      { ...context, query },
+      [
+        { description: 'Try a simpler search query' },
+        { description: 'Check if the codebase has been indexed' },
+        { description: 'Use semantic search instead of text search' }
+      ],
+      originalError
+    );
+    this.name = 'SearchError';
   }
 }

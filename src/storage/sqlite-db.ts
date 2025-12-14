@@ -4,6 +4,18 @@ import { dirname, isAbsolute } from 'path';
 import { DatabaseMigrator } from './migrations.js';
 import { Logger } from '../utils/logger.js';
 
+/**
+ * Type-safe database row representation
+ */
+interface DatabaseRow {
+  [key: string]: string | number | boolean | null | Buffer;
+}
+
+/**
+ * Type-safe database query parameters
+ */
+type QueryParams = (string | number | boolean | null | Buffer)[];
+
 export interface SemanticConcept {
   id: string;
   conceptName: string;
@@ -162,7 +174,7 @@ export class SQLiteDatabase {
 
   getSemanticConcepts(filePath?: string): SemanticConcept[] {
     let query = 'SELECT * FROM semantic_concepts';
-    let params: any[] = [];
+    let params: QueryParams = [];
 
     if (filePath) {
       query += ' WHERE file_path = ?';
@@ -170,19 +182,19 @@ export class SQLiteDatabase {
     }
 
     const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as any[];
+    const rows = stmt.all(...params) as DatabaseRow[];
 
-    return rows.map(row => ({
-      id: row.id,
-      conceptName: row.concept_name,
-      conceptType: row.concept_type,
-      confidenceScore: row.confidence_score,
-      relationships: JSON.parse(row.relationships || '{}'),
-      evolutionHistory: JSON.parse(row.evolution_history || '{}'),
-      filePath: row.file_path,
-      lineRange: JSON.parse(row.line_range || '{"start": 0, "end": 0}'),
-      createdAt: new Date(row.created_at + ' UTC'),
-      updatedAt: new Date(row.updated_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      conceptName: String(row.concept_name),
+      conceptType: String(row.concept_type),
+      confidenceScore: Number(row.confidence_score),
+      relationships: JSON.parse(String(row.relationships || '{}')),
+      evolutionHistory: JSON.parse(String(row.evolution_history || '{}')),
+      filePath: String(row.file_path),
+      lineRange: JSON.parse(String(row.line_range || '{"start": 0, "end": 0}')),
+      createdAt: new Date(String(row.created_at) + ' UTC'),
+      updatedAt: new Date(String(row.updated_at) + ' UTC')
     }));
   }
 
@@ -208,7 +220,7 @@ export class SQLiteDatabase {
 
   getDeveloperPatterns(patternType?: string, limit?: number): DeveloperPattern[] {
     let query = 'SELECT * FROM developer_patterns';
-    let params: any[] = [];
+    let params: QueryParams = [];
 
     if (patternType) {
       query += ' WHERE pattern_type = ?';
@@ -227,18 +239,18 @@ export class SQLiteDatabase {
     }
 
     const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as any[];
+    const rows = stmt.all(...params) as DatabaseRow[];
 
-    return rows.map(row => ({
-      patternId: row.pattern_id,
-      patternType: row.pattern_type,
-      patternContent: JSON.parse(row.pattern_content),
-      frequency: row.frequency,
-      contexts: JSON.parse(row.contexts || '[]'),
-      examples: JSON.parse(row.examples || '[]'),
-      confidence: row.confidence,
-      createdAt: new Date(row.created_at + ' UTC'),
-      lastSeen: new Date(row.last_seen + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      patternId: String(row.pattern_id),
+      patternType: String(row.pattern_type),
+      patternContent: JSON.parse(String(row.pattern_content)),
+      frequency: Number(row.frequency),
+      contexts: JSON.parse(String(row.contexts || '[]')),
+      examples: JSON.parse(String(row.examples || '[]')),
+      confidence: Number(row.confidence),
+      createdAt: new Date(String(row.created_at) + ' UTC'),
+      lastSeen: new Date(String(row.last_seen) + ' UTC')
     }));
   }
 
@@ -301,7 +313,7 @@ export class SQLiteDatabase {
 
   getAIInsights(insightType?: string): AIInsight[] {
     let query = 'SELECT * FROM ai_insights';
-    let params: any[] = [];
+    let params: QueryParams = [];
 
     if (insightType) {
       query += ' WHERE insight_type = ?';
@@ -311,17 +323,17 @@ export class SQLiteDatabase {
     query += ' ORDER BY confidence_score DESC, created_at DESC';
 
     const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as any[];
+    const rows = stmt.all(...params) as DatabaseRow[];
 
-    return rows.map(row => ({
-      insightId: row.insight_id,
-      insightType: row.insight_type,
-      insightContent: JSON.parse(row.insight_content),
-      confidenceScore: row.confidence_score,
-      sourceAgent: row.source_agent,
-      validationStatus: row.validation_status as 'pending' | 'validated' | 'rejected',
-      impactPrediction: JSON.parse(row.impact_prediction || '{}'),
-      createdAt: new Date(row.created_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      insightId: String(row.insight_id),
+      insightType: String(row.insight_type),
+      insightContent: JSON.parse(String(row.insight_content)),
+      confidenceScore: Number(row.confidence_score),
+      sourceAgent: String(row.source_agent),
+      validationStatus: String(row.validation_status) as 'pending' | 'validated' | 'rejected',
+      impactPrediction: JSON.parse(String(row.impact_prediction || '{}')),
+      createdAt: new Date(String(row.created_at) + ' UTC')
     }));
   }
 
@@ -354,26 +366,26 @@ export class SQLiteDatabase {
     }
 
     // Try to find feature maps with any of the path variants
-    let rows: any[] = [];
+    let rows: DatabaseRow[] = [];
     for (const path of paths) {
       const stmt = this.db.prepare(`
         SELECT * FROM feature_map WHERE project_path = ? AND status = 'active'
         ORDER BY feature_name
       `);
-      rows = stmt.all(path) as any[];
+      rows = stmt.all(path) as DatabaseRow[];
       if (rows.length > 0) break;
     }
 
-    return rows.map(row => ({
-      id: row.id,
-      projectPath: row.project_path,
-      featureName: row.feature_name,
-      primaryFiles: JSON.parse(row.primary_files || '[]'),
-      relatedFiles: JSON.parse(row.related_files || '[]'),
-      dependencies: JSON.parse(row.dependencies || '[]'),
-      status: row.status,
-      createdAt: new Date(row.created_at + ' UTC'),
-      updatedAt: new Date(row.updated_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      projectPath: String(row.project_path),
+      featureName: String(row.feature_name),
+      primaryFiles: JSON.parse(String(row.primary_files || '[]')),
+      relatedFiles: JSON.parse(String(row.related_files || '[]')),
+      dependencies: JSON.parse(String(row.dependencies || '[]')),
+      status: String(row.status),
+      createdAt: new Date(String(row.created_at) + ' UTC'),
+      updatedAt: new Date(String(row.updated_at) + ' UTC')
     }));
   }
 
@@ -385,18 +397,18 @@ export class SQLiteDatabase {
       ORDER BY feature_name
     `);
     const searchPattern = `%${query}%`;
-    const rows = stmt.all(projectPath, searchPattern, searchPattern.toLowerCase(), searchPattern.toUpperCase()) as any[];
+    const rows = stmt.all(projectPath, searchPattern, searchPattern.toLowerCase(), searchPattern.toUpperCase()) as DatabaseRow[];
 
-    return rows.map(row => ({
-      id: row.id,
-      projectPath: row.project_path,
-      featureName: row.feature_name,
-      primaryFiles: JSON.parse(row.primary_files || '[]'),
-      relatedFiles: JSON.parse(row.related_files || '[]'),
-      dependencies: JSON.parse(row.dependencies || '[]'),
-      status: row.status,
-      createdAt: new Date(row.created_at + ' UTC'),
-      updatedAt: new Date(row.updated_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      projectPath: String(row.project_path),
+      featureName: String(row.feature_name),
+      primaryFiles: JSON.parse(String(row.primary_files || '[]')),
+      relatedFiles: JSON.parse(String(row.related_files || '[]')),
+      dependencies: JSON.parse(String(row.dependencies || '[]')),
+      status: String(row.status),
+      createdAt: new Date(String(row.created_at) + ' UTC'),
+      updatedAt: new Date(String(row.updated_at) + ' UTC')
     }));
   }
 
@@ -450,24 +462,24 @@ export class SQLiteDatabase {
     }
 
     // Try to find entry points with any of the path variants
-    let rows: any[] = [];
+    let rows: DatabaseRow[] = [];
     for (const path of paths) {
       const stmt = this.db.prepare(`
         SELECT * FROM entry_points WHERE project_path = ?
         ORDER BY entry_type, file_path
       `);
-      rows = stmt.all(path) as any[];
+      rows = stmt.all(path) as DatabaseRow[];
       if (rows.length > 0) break;
     }
 
-    return rows.map(row => ({
-      id: row.id,
-      projectPath: row.project_path,
-      entryType: row.entry_type,
-      filePath: row.file_path,
-      description: row.description,
-      framework: row.framework,
-      createdAt: new Date(row.created_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      projectPath: String(row.project_path),
+      entryType: String(row.entry_type),
+      filePath: String(row.file_path),
+      description: row.description ? String(row.description) : undefined,
+      framework: row.framework ? String(row.framework) : undefined,
+      createdAt: new Date(String(row.created_at) + ' UTC')
     }));
   }
 
@@ -498,24 +510,24 @@ export class SQLiteDatabase {
     }
 
     // Try to find key directories with any of the path variants
-    let rows: any[] = [];
+    let rows: DatabaseRow[] = [];
     for (const path of paths) {
       const stmt = this.db.prepare(`
         SELECT * FROM key_directories WHERE project_path = ?
         ORDER BY directory_type, directory_path
       `);
-      rows = stmt.all(path) as any[];
+      rows = stmt.all(path) as DatabaseRow[];
       if (rows.length > 0) break;
     }
 
-    return rows.map(row => ({
-      id: row.id,
-      projectPath: row.project_path,
-      directoryPath: row.directory_path,
-      directoryType: row.directory_type,
-      fileCount: row.file_count,
-      description: row.description,
-      createdAt: new Date(row.created_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      projectPath: String(row.project_path),
+      directoryPath: String(row.directory_path),
+      directoryType: String(row.directory_type),
+      fileCount: Number(row.file_count),
+      description: row.description ? String(row.description) : undefined,
+      createdAt: new Date(String(row.created_at) + ' UTC')
     }));
   }
 
@@ -680,20 +692,20 @@ export class SQLiteDatabase {
       ORDER BY session_start DESC
       LIMIT ?
     `);
-    const rows = stmt.all(projectPath, limit) as any[];
+    const rows = stmt.all(projectPath, limit) as DatabaseRow[];
 
-    return rows.map(row => ({
-      id: row.id,
-      projectPath: row.project_path,
-      sessionStart: new Date(row.session_start + ' UTC'),
-      sessionEnd: row.session_end ? new Date(row.session_end + ' UTC') : undefined,
-      lastFeature: row.last_feature,
-      currentFiles: JSON.parse(row.current_files || '[]'),
-      completedTasks: JSON.parse(row.completed_tasks || '[]'),
-      pendingTasks: JSON.parse(row.pending_tasks || '[]'),
-      blockers: JSON.parse(row.blockers || '[]'),
-      sessionNotes: row.session_notes,
-      lastUpdated: new Date(row.last_updated + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      projectPath: String(row.project_path),
+      sessionStart: new Date(String(row.session_start) + ' UTC'),
+      sessionEnd: row.session_end ? new Date(String(row.session_end) + ' UTC') : undefined,
+      lastFeature: row.last_feature ? String(row.last_feature) : undefined,
+      currentFiles: JSON.parse(String(row.current_files || '[]')),
+      completedTasks: JSON.parse(String(row.completed_tasks || '[]')),
+      pendingTasks: JSON.parse(String(row.pending_tasks || '[]')),
+      blockers: JSON.parse(String(row.blockers || '[]')),
+      sessionNotes: row.session_notes ? String(row.session_notes) : undefined,
+      lastUpdated: new Date(String(row.last_updated) + ' UTC')
     }));
   }
 
@@ -720,15 +732,15 @@ export class SQLiteDatabase {
       ORDER BY made_at DESC
       LIMIT ?
     `);
-    const rows = stmt.all(projectPath, limit) as any[];
+    const rows = stmt.all(projectPath, limit) as DatabaseRow[];
 
-    return rows.map(row => ({
-      id: row.id,
-      projectPath: row.project_path,
-      decisionKey: row.decision_key,
-      decisionValue: row.decision_value,
-      reasoning: row.reasoning,
-      madeAt: new Date(row.made_at + ' UTC')
+    return rows.map((row: DatabaseRow) => ({
+      id: String(row.id),
+      projectPath: String(row.project_path),
+      decisionKey: String(row.decision_key),
+      decisionValue: String(row.decision_value),
+      reasoning: row.reasoning ? String(row.reasoning) : undefined,
+      madeAt: new Date(String(row.made_at) + ' UTC')
     }));
   }
 
