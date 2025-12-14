@@ -57,31 +57,29 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
 
   private async ensureCollection(): Promise<void> {
     const dimension = this.getEmbeddingDimension();
-    Logger.debug(
-      `🔍 Ensuring Qdrant collection "${this.collectionName}" with named vectors...`,
-    );
+    Logger.debug(`🔍 Ensuring Qdrant collection "${this.collectionName}"...`);
 
-    // Always delete existing collection to force recreate with named vectors
+    // Always delete existing collection to force recreate with anonymous vectors
     try {
       await this.client.deleteCollection(this.collectionName);
-      Logger.debug(`🗑️ Deleted existing collection ${this.collectionName}`);
+      Logger.info(
+        `🗑️ Successfully deleted existing collection ${this.collectionName}`,
+      );
     } catch (error: unknown) {
-      Logger.debug(
+      Logger.info(
         `Collection ${this.collectionName} does not exist or could not be deleted:`,
-        error,
+        error instanceof Error ? error.message : String(error),
       );
     }
 
     Logger.info(
-      `🆕 Creating Qdrant collection "${this.collectionName}" with named vectors, dimension ${dimension}...`,
+      `🆕 Creating Qdrant collection "${this.collectionName}" with anonymous vectors, dimension ${dimension}...`,
     );
     try {
       await this.client.createCollection(this.collectionName, {
         vectors: {
-          embedding: {
-            size: dimension,
-            distance: "Cosine",
-          },
+          size: dimension,
+          distance: "Cosine",
         },
       });
       Logger.info(
@@ -90,7 +88,7 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     } catch (error: unknown) {
       Logger.error(
         `❌ Failed to create Qdrant collection "${this.collectionName}":`,
-        error,
+        error instanceof Error ? error.message : String(error),
       );
       throw error;
     }
@@ -104,20 +102,23 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     }
 
     const record = vectors as Record<string, unknown>;
-    const size = typeof record.size === "number" ? record.size : undefined;
-    const distance =
-      typeof record.distance === "string" ? record.distance : undefined;
+  }
 
-    if (size !== undefined || distance !== undefined) {
-      return { size, distance };
+  private async getCollectionInfo(): Promise<unknown> {
+    try {
+      const info = await this.client.getCollection(this.collectionName);
+      Logger.debug(
+        `📊 Current collection info:`,
+        JSON.stringify(info, null, 2),
+      );
+      return info;
+    } catch (error: unknown) {
+      Logger.debug(
+        `Collection ${this.collectionName} info could not be retrieved:`,
+        error instanceof Error ? error.message : String(error),
+      );
+      return null;
     }
-
-    if (record.params && typeof record.params === "object") {
-      return this.extractVectorParams(record.params);
-    }
-
-    const firstEntry = Object.values(record)[0];
-    return firstEntry ? this.extractVectorParams(firstEntry) : undefined;
   }
 
   async storeCodeEmbedding(
@@ -127,11 +128,21 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     this.ensureInitialized();
     const embedding = await this.generateEmbedding(code);
 
+    // Validate embedding for invalid values
+    this.validateEmbedding(embedding);
+
+    Logger.debug(
+      `🔍 Vector to store - length: ${embedding.length}, first few values: ${embedding.slice(0, 3).join(", ")}`,
+    );
+    Logger.debug(
+      `🔍 Vector format: ${JSON.stringify(embedding).slice(0, 100)}...`,
+    );
+
     await this.client.upsert(this.collectionName, {
       points: [
         {
           id: randomUUID(),
-          vector: { name: "embedding", vector: embedding } as any,
+          vector: embedding as any,
           payload: {
             pointId: metadata.id,
             code,
@@ -158,9 +169,10 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     const points = [];
     for (let i = 0; i < codeChunks.length; i++) {
       const embedding = await this.generateEmbedding(codeChunks[i]);
+      this.validateEmbedding(embedding);
       points.push({
         id: randomUUID(),
-        vector: { name: "embedding", vector: embedding } as any,
+        vector: embedding as any,
         payload: {
           pointId: metadataList[i].id,
           code: codeChunks[i],
@@ -203,7 +215,7 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     const filter = this.buildFilter(filters);
 
     const results = await this.client.search(this.collectionName, {
-      vector: { name: "embedding", vector: embedding } as any,
+      vector: embedding as any,
       limit,
       filter,
     });
@@ -242,11 +254,12 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
       throw new Error("Point with id " + id + " not found");
     }
     const embedding = await this.generateEmbedding(code);
+    this.validateEmbedding(embedding);
     await this.client.upsert(this.collectionName, {
       points: [
         {
           id: uuid,
-          vector: { name: "embedding", vector: embedding } as any,
+          vector: embedding as any,
           payload: {
             pointId: id,
             code,
@@ -324,5 +337,22 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     }
 
     return { must };
+  }
+
+  private validateEmbedding(embedding: number[]): void {
+    if (!embedding || embedding.length === 0) {
+      throw new Error("Embedding is empty or undefined");
+    }
+
+    for (let i = 0; i < embedding.length; i++) {
+      const value = embedding[i];
+      if (typeof value !== "number" || !isFinite(value)) {
+        throw new Error(
+          `Invalid embedding value at index ${i}: ${value} (type: ${typeof value}, finite: ${isFinite(value)})`,
+        );
+      }
+    }
+
+    Logger.debug(`✅ Embedding validated: ${embedding.length} finite values`);
   }
 }
