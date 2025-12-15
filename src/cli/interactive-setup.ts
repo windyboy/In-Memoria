@@ -267,6 +267,7 @@ export class InteractiveSetup {
       database = new SQLiteDatabase(join(config.projectPath, "in-memoria.db"));
       const embeddingConfig = globalConfig.getEmbeddingConfig();
       vectorDB = createVectorStore(embeddingConfig);
+      await vectorDB.verifyEmbeddingModel();
       semanticEngine = new SemanticEngine(database, vectorDB);
       patternEngine = new PatternEngine(database);
 

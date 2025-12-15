@@ -59,23 +59,79 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     const dimension = this.getEmbeddingDimension();
     Logger.debug(`🔍 Ensuring Qdrant collection "${this.collectionName}"...`);
 
-    // Always delete existing collection to force recreate with anonymous vectors
+    // Reuse existing collection when dimensions align; recreate only when explicitly requested
     try {
-      await this.client.deleteCollection(this.collectionName);
-      Logger.info(
-        `🗑️ Successfully deleted existing collection ${this.collectionName}`,
-      );
+      const existingInfo = await this.getCollectionInfo();
+      if (existingInfo) {
+        const vectorParams = this.extractVectorParams(
+          (existingInfo as any)?.result?.vectors ||
+            (existingInfo as any)?.result?.config?.params?.vectors ||
+            (existingInfo as any)?.vectors,
+        );
+
+        if (vectorParams?.size) {
+          if (vectorParams.size !== dimension) {
+            const shouldReset =
+              process.env.IN_MEMORIA_QDRANT_RESET === "true";
+            const message = `Existing collection "${this.collectionName}" dimension (${vectorParams.size}) does not match expected (${dimension}).`;
+            if (shouldReset) {
+              Logger.warn(
+                `${message} IN_MEMORIA_QDRANT_RESET=true -> recreating collection.`,
+              );
+              await this.recreateCollection(dimension);
+              return;
+            }
+            throw new Error(
+              `${message} Set IN_MEMORIA_QDRANT_RESET=true to recreate or align IN_MEMORIA_EMBEDDING_DIMENSION.`,
+            );
+          }
+          Logger.info(
+            `✅ Using existing Qdrant collection "${this.collectionName}" (dimension ${vectorParams.size})`,
+          );
+          return;
+        }
+
+        Logger.warn(
+          `⚠️ Could not read vector params for collection "${this.collectionName}". Assuming compatibility and reusing existing collection.`,
+        );
+        return;
+      }
     } catch (error: unknown) {
-      Logger.info(
-        `Collection ${this.collectionName} does not exist or could not be deleted:`,
-        error instanceof Error ? error.message : String(error),
-      );
+      const status =
+        (error as any)?.status || (error as any)?.response?.status;
+      if (status && status !== 404) {
+        Logger.error(
+          `❌ Failed to inspect collection "${this.collectionName}":`,
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
     }
 
+    Logger.info(
+      `ℹ️ Collection "${this.collectionName}" not found; will create a new one.`,
+    );
+    await this.recreateCollection(dimension);
+  }
+
+  private async recreateCollection(dimension: number): Promise<void> {
     Logger.info(
       `🆕 Creating Qdrant collection "${this.collectionName}" with anonymous vectors, dimension ${dimension}...`,
     );
     try {
+      // Delete only when explicitly recreating
+      try {
+        await this.client.deleteCollection(this.collectionName);
+        Logger.info(
+          `🗑️ Successfully deleted existing collection ${this.collectionName}`,
+        );
+      } catch (error: unknown) {
+        Logger.info(
+          `Collection ${this.collectionName} does not exist or could not be deleted:`,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+
       await this.client.createCollection(this.collectionName, {
         vectors: {
           size: dimension,
@@ -102,6 +158,43 @@ export class QdrantVectorDB extends SurrealVectorDB implements VectorStore {
     }
 
     const record = vectors as Record<string, unknown>;
+
+    if (
+      typeof record.size === "number" ||
+      typeof record.distance === "string"
+    ) {
+      return {
+        size: typeof record.size === "number" ? record.size : undefined,
+        distance:
+          typeof record.distance === "string"
+            ? (record.distance as string)
+            : undefined,
+      };
+    }
+
+    // Handle named vector configurations: { default: { size, distance } }
+    for (const value of Object.values(record)) {
+      if (value && typeof value === "object") {
+        const nested = value as Record<string, unknown>;
+        if (
+          typeof nested.size === "number" ||
+          typeof nested.distance === "string"
+        ) {
+          return {
+            size:
+              typeof nested.size === "number"
+                ? (nested.size as number)
+                : undefined,
+            distance:
+              typeof nested.distance === "string"
+                ? (nested.distance as string)
+                : undefined,
+          };
+        }
+      }
+    }
+
+    return undefined;
   }
 
   private async getCollectionInfo(): Promise<unknown> {

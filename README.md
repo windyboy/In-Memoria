@@ -160,7 +160,8 @@ In Memoria is built on Rust + TypeScript, using the Model Context Protocol to co
 - SQLite for patterns and metadata
 - SurrealDB with SurrealKV backend for persistent vector embeddings (default)
 - Optional: External Qdrant for vectors by setting `IN_MEMORIA_VECTOR_BACKEND=qdrant` plus `QDRANT_URL`/`QDRANT_API_KEY`/`QDRANT_COLLECTION`
-- Local transformers.js for embeddings (Xenova/all-MiniLM-L6-v2)
+- Local transformers.js for embeddings (Xenova/all-MiniLM-L6-v2) that read/write from the Hugging Face cache (`IN_MEMORIA_EMBEDDING_CACHE_DIR` → `HUGGINGFACE_HUB_CACHE` → `HF_HOME/hub`), never the transformers.js default cache
+  - Set `IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY=true` (or `TRANSFORMERS_OFFLINE=true`) to disable remote model fetches; ensure the Hugging Face cache already contains the model
 
 ### Using an external Qdrant vector DB
 

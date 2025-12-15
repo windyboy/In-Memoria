@@ -79,6 +79,7 @@ QDRANT_COLLECTION=in-memoria      # Collection name
 IN_MEMORIA_BATCH_SIZE=50          # File processing batch size
 IN_MEMORIA_MAX_CONCURRENT=10      # Max concurrent operations
 IN_MEMORIA_EMBEDDING_CACHE_SIZE=1000  # Embedding cache size
+IN_MEMORIA_EMBEDDING_CACHE_DIR=~/.cache/huggingface/hub  # Optional: prefer Hugging Face cache location
 
 # Logging
 IN_MEMORIA_LOG_LEVEL=info         # error, warn, info, debug
@@ -470,6 +471,16 @@ IN_MEMORIA_EMBEDDING_DIMENSION=384
 # Adjust pooling strategy
 IN_MEMORIA_EMBEDDING_POOLING=mean  # or 'cls'
 IN_MEMORIA_EMBEDDING_NORMALIZE=true
+
+# Control embedding cache location (Hugging Face-style layout)
+# Priority: IN_MEMORIA_EMBEDDING_CACHE_DIR > HUGGINGFACE_HUB_CACHE > HF_HOME/hub
+IN_MEMORIA_EMBEDDING_CACHE_DIR=~/.cache/huggingface/hub
+HUGGINGFACE_HUB_CACHE=~/.cache/huggingface/hub
+HF_HOME=~/.cache/huggingface
+
+# Force offline/local-only embeddings (requires cached assets in the Hugging Face cache)
+IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY=true
+# TRANSFORMERS_OFFLINE is recognized for compatibility, but TRANSFORMERS_CACHE is intentionally ignored
 ```
 
 ### Multiple Projects

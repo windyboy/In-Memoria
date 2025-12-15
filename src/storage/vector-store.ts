@@ -20,6 +20,7 @@ export interface SemanticSearchResult {
 
 export interface VectorStore {
   initialize(collectionName?: string): Promise<void>;
+  verifyEmbeddingModel(): Promise<void>;
   storeCodeEmbedding(code: string, metadata: CodeMetadata): Promise<void>;
   storeMultipleEmbeddings(codeChunks: string[], metadataList: CodeMetadata[]): Promise<void>;
   findSimilarCode(query: string, limit?: number, filters?: Record<string, unknown>): Promise<SemanticSearchResult[]>;

@@ -46,6 +46,7 @@ export class LearningService {
     const projectDatabase = new SQLiteDatabase(projectDbPath);
     const embeddingConfig = config.getEmbeddingConfig();
     const projectVectorDB = createVectorStore(embeddingConfig);
+    await projectVectorDB.verifyEmbeddingModel();
     const projectSemanticEngine = new SemanticEngine(
       projectDatabase,
       projectVectorDB,

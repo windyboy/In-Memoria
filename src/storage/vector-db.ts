@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, readdirSync, statSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 import { Surreal } from "surrealdb";
 import * as SurrealNodeModule from "@surrealdb/node";
 import {
@@ -14,6 +17,7 @@ import { EmbeddingConfig } from "./vector-types.js";
 
 type TransformersModule = typeof import("@xenova/transformers");
 type PipelineFactory = TransformersModule["pipeline"];
+type TransformersEnv = TransformersModule["env"];
 
 interface CodeDocument {
   id?: string;
@@ -25,12 +29,24 @@ interface CodeDocument {
   [key: string]: unknown;
 }
 
+const DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
+const ALLOWED_MODELS: Record<string, number> = {
+  "Xenova/all-MiniLM-L6-v2": 384,
+  "Xenova/all-MiniLM-L12-v2": 384,
+  "Xenova/paraphrase-MiniLM-L6-v2": 384,
+  "Xenova/all-mpnet-base-v2": 768,
+  "Xenova/paraphrase-multilingual-MiniLM-L12-v2": 384,
+  "Xenova/msmarco-distilbert-base-v4": 768,
+  "Xenova/multi-qa-MiniLM-L6-cos-v1": 384,
+};
+
 export class SurrealVectorDB implements VectorStore {
   private db: Surreal;
   protected initialized: boolean = false;
   private localEmbeddingPipeline: any; // Use any to avoid complex typing issues
   private transformersPipelineFactory: PipelineFactory | null = null;
   private transformersLoadPromise?: Promise<PipelineFactory | null>;
+  private transformersEnv: TransformersEnv | null = null;
 
   // Configurable embedding settings
   private embeddingModel: string;
@@ -38,6 +54,9 @@ export class SurrealVectorDB implements VectorStore {
   private embeddingCacheSize: number;
   private embeddingPooling: "mean" | "cls";
   private embeddingNormalize: boolean;
+  private offlineMode: boolean;
+  private preferredCacheDir: string;
+  private localModelRoot: string | null = null;
 
   // Real vector operations with caching
   private embeddingCache = new Map<
@@ -50,6 +69,7 @@ export class SurrealVectorDB implements VectorStore {
   // Embedding progress tracking
   private hasLoggedEmbeddingStart = false;
   private transformersFailed = false;
+  private hasLoggedEmbeddingCacheDir = false;
 
   constructor(_apiKey?: string, embeddingConfig?: EmbeddingConfig) {
     this.db = new Surreal({
@@ -60,15 +80,15 @@ export class SurrealVectorDB implements VectorStore {
     const requestedModel =
       embeddingConfig?.model ||
       process.env.IN_MEMORIA_EMBEDDING_MODEL ||
-      "Xenova/all-MiniLM-L6-v2";
+      DEFAULT_MODEL;
 
-    // Validate model against allowlist
     this.embeddingModel = this.validateModel(requestedModel);
 
     this.embeddingDimension =
       embeddingConfig?.dimension ||
       parseInt(process.env.IN_MEMORIA_EMBEDDING_DIMENSION || "", 10) ||
-      this.getModelDimension(this.embeddingModel);
+      ALLOWED_MODELS[this.embeddingModel] ||
+      ALLOWED_MODELS[DEFAULT_MODEL];
 
     this.embeddingCacheSize =
       embeddingConfig?.cacheSize ||
@@ -84,6 +104,18 @@ export class SurrealVectorDB implements VectorStore {
       embeddingConfig?.normalize !== undefined
         ? embeddingConfig.normalize
         : process.env.IN_MEMORIA_EMBEDDING_NORMALIZE !== "false"; // Default true
+
+    this.offlineMode =
+      process.env.IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY === "true" ||
+      process.env.IN_MEMORIA_EMBEDDINGS_OFFLINE === "true" ||
+      process.env.TRANSFORMERS_OFFLINE === "true";
+    this.preferredCacheDir = this.resolveEmbeddingCacheDir();
+
+    if (this.offlineMode) {
+      Logger.info(
+        "🔒 Local-only embeddings enabled; remote model downloads are disabled",
+      );
+    }
 
     // Calculate memory limit based on embedding dimension and cache size
     // Each embedding: dimension * 4 bytes (float32) * cacheSize
@@ -108,41 +140,55 @@ export class SurrealVectorDB implements VectorStore {
   }
 
   /**
+   * Resolve the Hugging Face cache directory, preferring user-provided
+   * overrides and HF_HOME/HUGGINGFACE_HUB_CACHE. We intentionally avoid
+   * the transformers.js default cache to reuse existing Hugging Face assets.
+   */
+  private resolveEmbeddingCacheDir(): string {
+    const explicitCache =
+      process.env.IN_MEMORIA_EMBEDDING_CACHE_DIR &&
+      process.env.IN_MEMORIA_EMBEDDING_CACHE_DIR.trim();
+    if (explicitCache) {
+      return process.env.IN_MEMORIA_EMBEDDING_CACHE_DIR as string;
+    }
+
+    const huggingFaceCache =
+      process.env.HUGGINGFACE_HUB_CACHE && process.env.HUGGINGFACE_HUB_CACHE.trim();
+    if (huggingFaceCache) {
+      return process.env.HUGGINGFACE_HUB_CACHE as string;
+    }
+
+    const hfHome =
+      process.env.HF_HOME && process.env.HF_HOME.trim()
+        ? (process.env.HF_HOME as string)
+        : join(homedir(), ".cache", "huggingface");
+
+    return join(hfHome, "hub");
+  }
+
+  /**
    * Validate model name against allowlist
    * Returns validated model name or falls back to default
    */
   private validateModel(requestedModel: string): string {
-    const allowedModels = [
-      "Xenova/all-MiniLM-L6-v2",
-      "Xenova/all-MiniLM-L12-v2",
-      "Xenova/paraphrase-MiniLM-L6-v2",
-      "Xenova/all-mpnet-base-v2",
-      "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
-      "Xenova/msmarco-distilbert-base-v4",
-      "Xenova/multi-qa-MiniLM-L6-cos-v1",
-    ];
-
-    const defaultModel = "Xenova/all-MiniLM-L6-v2";
-
-    // Check if model is in allowlist
-    if (allowedModels.includes(requestedModel)) {
+    if (ALLOWED_MODELS[requestedModel]) {
       Logger.info(`✅ Model validated: ${requestedModel} (in allowlist)`);
       return requestedModel;
     }
 
-    // Check if model starts with Xenova/ (allow custom Xenova models with warning)
     if (requestedModel.startsWith("Xenova/")) {
       Logger.warn(`⚠️  Using custom Xenova model: ${requestedModel}`);
-      Logger.warn(`   This model is not in the official allowlist.`);
-      Logger.warn(`   Supported models: ${allowedModels.join(", ")}`);
+      Logger.warn(
+        `   This model is not in the official allowlist. Supported models: ${Object.keys(ALLOWED_MODELS).join(", ")}`,
+      );
       return requestedModel;
     }
 
-    // Fall back to default with warning
     Logger.warn(`⚠️  Model "${requestedModel}" is not supported.`);
-    Logger.warn(`   Falling back to default: ${defaultModel}`);
-    Logger.warn(`   Supported models: ${allowedModels.join(", ")}`);
-    return defaultModel;
+    Logger.warn(
+      `   Falling back to default: ${DEFAULT_MODEL}. Supported models: ${Object.keys(ALLOWED_MODELS).join(", ")}`,
+    );
+    return DEFAULT_MODEL;
   }
 
   /**
@@ -167,19 +213,31 @@ export class SurrealVectorDB implements VectorStore {
   }
 
   /**
-   * Get the expected dimension for a given model
+   * Verify embedding model availability before learning begins.
+   * Attempts to prepare the local pipeline and reports whether the
+   * optimized path will be used or if we will fall back.
    */
-  private getModelDimension(modelName: string): number {
-    const dimensions: Record<string, number> = {
-      "Xenova/all-MiniLM-L6-v2": 384,
-      "Xenova/all-MiniLM-L12-v2": 384,
-      "Xenova/paraphrase-MiniLM-L6-v2": 384,
-      "Xenova/all-mpnet-base-v2": 768,
-      "Xenova/paraphrase-multilingual-MiniLM-L12-v2": 384,
-      "Xenova/msmarco-distilbert-base-v4": 768,
-      "Xenova/multi-qa-MiniLM-L6-cos-v1": 384,
-    };
-    return dimensions[modelName] || 384; // Default fallback
+  async verifyEmbeddingModel(): Promise<void> {
+    Logger.info(
+      `🔍 Verifying embedding model availability for ${this.embeddingModel}...`,
+    );
+    try {
+      await this.initializeLocalEmbeddings();
+      if (this.localEmbeddingPipeline) {
+        Logger.info(
+          `✅ ${this.embeddingModel} is ready (${this.embeddingDimension}d); using transformers.js embeddings`,
+        );
+      } else {
+        Logger.warn(
+          `⚠️ ${this.embeddingModel} could not be prepared; using fallback local embeddings`,
+        );
+      }
+    } catch (error: unknown) {
+      Logger.warn(
+        `⚠️ Failed to verify ${this.embeddingModel}; continuing with fallback embeddings`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   /**
@@ -188,6 +246,23 @@ export class SurrealVectorDB implements VectorStore {
   private async loadTransformersPipelineFactory(): Promise<PipelineFactory | null> {
     if (this.transformersPipelineFactory) {
       return this.transformersPipelineFactory;
+    }
+
+    // Provide a deterministic cache hint early so it shows up in logs even if import fails
+    if (!this.hasLoggedEmbeddingCacheDir) {
+      const cacheHint = this.preferredCacheDir;
+      try {
+        mkdirSync(cacheHint, { recursive: true });
+        Logger.info(
+          `📍 Intended local embedding cache directory: ${cacheHint} (override with IN_MEMORIA_EMBEDDING_CACHE_DIR or Hugging Face envs)`,
+        );
+        this.hasLoggedEmbeddingCacheDir = true;
+      } catch (error) {
+        Logger.warn(
+          "⚠️  Unable to prepare embedding cache directory:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
 
     if (!this.transformersLoadPromise) {
@@ -199,6 +274,9 @@ export class SurrealVectorDB implements VectorStore {
           Logger.debug(`🔍 Importing @xenova/transformers module...`);
           const transformers: TransformersModule =
             await import("@xenova/transformers");
+          this.transformersEnv = transformers.env;
+          this.configureTransformersEnv(transformers.env);
+          this.logEmbeddingModelLocation(transformers.env);
           Logger.info(
             `✅ Successfully loaded transformers.js pipeline factory`,
           );
@@ -220,6 +298,136 @@ export class SurrealVectorDB implements VectorStore {
     return this.transformersPipelineFactory;
   }
 
+  private configureTransformersEnv(env: TransformersEnv): void {
+    try {
+      mkdirSync(this.preferredCacheDir, { recursive: true });
+      env.cacheDir = this.preferredCacheDir;
+    } catch (error) {
+      Logger.warn(
+        "⚠️  Unable to prepare embedding cache directory:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    const discoveredLocalModel =
+      this.localModelRoot || this.findLocalModelRoot();
+    if (discoveredLocalModel) {
+      this.localModelRoot = discoveredLocalModel;
+      env.localModelPath = discoveredLocalModel;
+    } else {
+      env.localModelPath = this.preferredCacheDir;
+    }
+
+    // Always allow local models; optionally disable remote fetches when offline
+    env.allowLocalModels = true;
+    env.allowRemoteModels = !this.offlineMode;
+  }
+
+  private logEmbeddingModelLocation(env?: TransformersEnv): void {
+    if (!env) {
+      return;
+    }
+
+    let localModelPath =
+      typeof env.localModelPath === "string" && env.localModelPath.trim()
+        ? env.localModelPath
+        : null;
+    let cacheDir =
+      typeof env.cacheDir === "string" && env.cacheDir.trim()
+        ? env.cacheDir
+        : null;
+
+    if (!localModelPath) {
+      env.localModelPath = this.preferredCacheDir;
+      localModelPath = this.preferredCacheDir;
+    }
+    if (!cacheDir) {
+      try {
+        mkdirSync(this.preferredCacheDir, { recursive: true });
+        env.cacheDir = this.preferredCacheDir;
+        cacheDir = this.preferredCacheDir;
+      } catch (error) {
+        Logger.warn(
+          "⚠️  Unable to prepare embedding cache directory:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
+    if (localModelPath) {
+      Logger.info(
+        `📍 Local embedding model path for ${this.embeddingModel}: ${localModelPath}`,
+      );
+    } else if (cacheDir) {
+      Logger.info(
+        `📍 Local embedding cache for ${this.embeddingModel}: ${cacheDir}`,
+      );
+    } else {
+      Logger.info(
+        "📍 Local embedding cache not configured; using transformers.js defaults",
+      );
+    }
+
+    Logger.debug(
+      `🌐 Embedding model access: allowLocalModels=${env.allowLocalModels}, allowRemoteModels=${env.allowRemoteModels}, cacheDir=${cacheDir || "unknown"}`,
+    );
+  }
+
+  private findLocalModelRoot(): string | null {
+    const slug = this.embeddingModel.replace(/\//g, "--");
+    const friendlyName = this.embeddingModel.replace("Xenova/", "");
+    const candidates = [
+      this.preferredCacheDir,
+      join(this.preferredCacheDir, this.embeddingModel),
+      join(this.preferredCacheDir, friendlyName),
+      join(this.preferredCacheDir, "Xenova", friendlyName),
+      join(this.preferredCacheDir, `models--${slug}`),
+    ];
+
+    for (const candidate of candidates) {
+      const resolved = this.resolveSnapshotPath(candidate);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  private resolveSnapshotPath(basePath: string): string | null {
+    const hasModelFiles = (pathToCheck: string): boolean =>
+      existsSync(join(pathToCheck, "config.json")) ||
+      existsSync(join(pathToCheck, "tokenizer.json")) ||
+      existsSync(join(pathToCheck, "onnx"));
+
+    if (hasModelFiles(basePath)) {
+      return basePath;
+    }
+
+    const snapshotsDir = join(basePath, "snapshots");
+    if (!existsSync(snapshotsDir)) {
+      return null;
+    }
+
+    const candidates = readdirSync(snapshotsDir, {
+      withFileTypes: true,
+    }).filter((dir) => dir.isDirectory());
+
+    if (!candidates.length) {
+      return null;
+    }
+
+    const newest = candidates
+      .map((dir) => ({
+        name: dir.name,
+        mtime: statSync(join(snapshotsDir, dir.name)).mtimeMs,
+      }))
+      .sort((a, b) => b.mtime - a.mtime)[0].name;
+
+    const snapshotPath = join(snapshotsDir, newest);
+    return hasModelFiles(snapshotPath) ? snapshotPath : null;
+  }
+
   /**
    * Initialize local embedding pipeline using transformers.js
    */
@@ -237,6 +445,20 @@ export class SurrealVectorDB implements VectorStore {
       );
       this.transformersFailed = true;
       return;
+    }
+
+    if (this.offlineMode) {
+      this.localModelRoot = this.localModelRoot || this.findLocalModelRoot();
+      if (!this.localModelRoot) {
+        Logger.info(
+          "🔄 Offline/local-only mode without cached model assets; using fallback embedding method",
+        );
+        this.transformersFailed = true;
+        return;
+      }
+      if (this.transformersEnv) {
+        this.transformersEnv.localModelPath = this.localModelRoot;
+      }
     }
 
     try {
@@ -407,14 +629,14 @@ export class SurrealVectorDB implements VectorStore {
       }));
     }
 
-    // Use SurrealDB's full-text search for semantic similarity
+    // Build candidate set with BM25 search, then rank by cosine similarity using stored embeddings
+    const candidateLimit = Math.max(limit * 5, 50);
     let searchQuery = `
-      SELECT *, search::score(1) AS similarity
+      SELECT *, search::score(1) AS bm25
       FROM code_documents
       WHERE code @@ $query
     `;
 
-    // Add filters if provided
     if (filters) {
       const filterConditions = Object.entries(filters)
         .map(([key, value]) => `metadata.${key} = $${key}`)
@@ -422,9 +644,12 @@ export class SurrealVectorDB implements VectorStore {
       searchQuery += ` AND ${filterConditions}`;
     }
 
-    searchQuery += ` ORDER BY similarity DESC LIMIT $limit`;
+    searchQuery += ` ORDER BY bm25 DESC LIMIT $candidateLimit`;
 
-    const params: Record<string, any> = { query, limit };
+    const params: Record<string, any> = {
+      query,
+      candidateLimit,
+    };
     if (filters) {
       Object.assign(params, filters);
     }
@@ -432,12 +657,39 @@ export class SurrealVectorDB implements VectorStore {
     const results = await this.db.query(searchQuery, params);
     const documents = (results[0] as any[]) || [];
 
-    return documents.map((doc) => ({
-      id: doc.id,
-      code: doc.code,
-      metadata: doc.metadata,
-      similarity: doc.similarity || 0,
-    }));
+    if (!documents.length) {
+      return [];
+    }
+
+    const queryEmbedding = await this.generateEmbedding(query);
+    const scored = documents
+      .filter(
+        (doc) =>
+          Array.isArray(doc.embedding) && doc.embedding.length > 0,
+      )
+      .map((doc) => ({
+        id: doc.id,
+        code: doc.code,
+        metadata: doc.metadata,
+        similarity: this.cosineSimilarity(
+          queryEmbedding,
+          doc.embedding as number[],
+        ),
+      }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+
+    // Fallback to BM25 scores when embeddings are missing
+    if (scored.length === 0) {
+      return documents.slice(0, limit).map((doc: any) => ({
+        id: doc.id,
+        code: doc.code,
+        metadata: doc.metadata,
+        similarity: doc.bm25 || 0,
+      }));
+    }
+
+    return scored;
   }
 
   async findSimilarCodeByFile(
@@ -577,9 +829,10 @@ export class SurrealVectorDB implements VectorStore {
       await this.initializeLocalEmbeddings();
     }
 
+    const cleanCode = this.preprocessCodeForEmbedding(code);
+
     if (this.localEmbeddingPipeline) {
       try {
-        const cleanCode = this.preprocessCodeForEmbedding(code);
         const result = await this.localEmbeddingPipeline(cleanCode, {
           pooling: this.embeddingPooling,
           normalize: this.embeddingNormalize,
@@ -587,15 +840,7 @@ export class SurrealVectorDB implements VectorStore {
 
         // Convert tensor to array
         const embedding = Array.from(result.data) as number[];
-
-        // Validate dimension matches expected
-        if (embedding.length !== this.embeddingDimension) {
-          Logger.warn(
-            `⚠️ Embedding dimension mismatch: got ${embedding.length}, expected ${this.embeddingDimension}`,
-          );
-        }
-
-        return embedding;
+        return this.ensureExpectedDimension(embedding);
       } catch (error: unknown) {
         Logger.warn(
           `⚠️ ${this.embeddingModel} pipeline failed:`,
@@ -606,47 +851,8 @@ export class SurrealVectorDB implements VectorStore {
       }
     }
 
-    // Fallback to advanced local method
-    return this.generateAdvancedLocalEmbedding(code);
-  }
-
-  /**
-   * Generate advanced local semantic embeddings using multiple techniques
-   */
-  private generateAdvancedLocalEmbedding(code: string): number[] {
-    const embedding = new Array(this.embeddingDimension).fill(0);
-
-    // 1. Structural features (25%)
-    const structural = this.extractStructuralFeatures(code);
-    const structuralSize = Math.floor(this.embeddingDimension * 0.25);
-    for (let i = 0; i < Math.min(structuralSize, structural.length); i++) {
-      embedding[i] = structural[i];
-    }
-
-    // 2. Semantic token features (35%)
-    const semantic = this.extractSemanticFeatures(code);
-    const semanticSize = Math.floor(this.embeddingDimension * 0.35);
-    for (let i = 0; i < Math.min(semanticSize, semantic.length); i++) {
-      embedding[structuralSize + i] = semantic[i];
-    }
-
-    // 3. AST-based features (25%)
-    const ast = this.extractASTFeatures(code);
-    const astSize = Math.floor(this.embeddingDimension * 0.25);
-    const astStart = structuralSize + semanticSize;
-    for (let i = 0; i < Math.min(astSize, ast.length); i++) {
-      embedding[astStart + i] = ast[i];
-    }
-
-    // 4. Context features (15%)
-    const context = this.extractContextFeatures(code);
-    const contextSize = this.embeddingDimension - astStart - astSize;
-    const contextStart = astStart + astSize;
-    for (let i = 0; i < Math.min(contextSize, context.length); i++) {
-      embedding[contextStart + i] = context[i];
-    }
-
-    return this.normalizeVector(embedding);
+    // Fallback to deterministic local method
+    return this.generateFallbackEmbedding(cleanCode);
   }
 
   /**
@@ -654,226 +860,44 @@ export class SurrealVectorDB implements VectorStore {
    */
   private async generateLocalEmbedding(text: string): Promise<number[]> {
     return this.getLocalEmbedding(text);
-  } /**
-   * Extract structural code features
-   */
-  private extractStructuralFeatures(code: string): number[] {
-    const features: number[] = [];
-
-    // Function density
-    const functions = (
-      code.match(
-        /function\s+\w+|const\s+\w+\s*=\s*(?:\([^)]*\)\s*=>|async\s*\([^)]*\)\s*=>)/g,
-      ) || []
-    ).length;
-    features.push(Math.min(functions / 10, 1));
-
-    // Class density
-    const classes = (code.match(/class\s+\w+/g) || []).length;
-    features.push(Math.min(classes / 5, 1));
-
-    // Import/export density
-    const imports = (code.match(/import\s+.*from|export\s+/g) || []).length;
-    features.push(Math.min(imports / 10, 1));
-
-    // Async patterns
-    const async = (code.match(/async\s+|await\s+|Promise/g) || []).length;
-    features.push(Math.min(async / 8, 1));
-
-    // Control flow complexity
-    const control = (
-      code.match(/if\s*\(|for\s*\(|while\s*\(|switch\s*\(/g) || []
-    ).length;
-    features.push(Math.min(control / 15, 1));
-
-    // Add more structural features up to 96
-    const patterns = [
-      /try\s*{|catch\s*\(/g, // Error handling
-      /\.\w+\s*\(/g, // Method calls
-      /{\s*\w+:/g, // Object literals
-      /\[\w*\]/g, // Array access
-      /=>\s*{/g, // Arrow functions
-      /interface\s+\w+/g, // TypeScript interfaces
-      /type\s+\w+/g, // Type definitions
-      /enum\s+\w+/g, // Enums
-    ];
-
-    for (const pattern of patterns) {
-      const count = (code.match(pattern) || []).length;
-      features.push(Math.min(count / 5, 1));
-    }
-
-    // Pad to 96 features
-    while (features.length < 96) {
-      features.push(0);
-    }
-
-    return features.slice(0, 96);
   }
 
-  /**
-   * Extract semantic token features
-   */
-  private extractSemanticFeatures(code: string): number[] {
-    const features: number[] = [];
+  private generateFallbackEmbedding(code: string): number[] {
     const tokens = this.extractMeaningfulTokens(code);
-
-    // Semantic categories with weights
-    const categories = [
-      {
-        keywords: ["service", "controller", "model", "view", "component"],
-        weight: 1.0,
-      },
-      {
-        keywords: ["create", "read", "update", "delete", "get", "set"],
-        weight: 0.9,
-      },
-      {
-        keywords: ["user", "auth", "login", "token", "session"],
-        weight: 0.8,
-      },
-      {
-        keywords: ["api", "http", "request", "response", "endpoint"],
-        weight: 0.8,
-      },
-      {
-        keywords: ["database", "query", "table", "schema", "migration"],
-        weight: 0.7,
-      },
-      {
-        keywords: ["test", "spec", "mock", "assert", "expect"],
-        weight: 0.7,
-      },
-      { keywords: ["config", "env", "settings", "options"], weight: 0.6 },
-      {
-        keywords: ["util", "helper", "common", "shared", "lib"],
-        weight: 0.5,
-      },
-    ];
-
-    for (const category of categories) {
-      let categoryScore = 0;
-      for (const keyword of category.keywords) {
-        const count = tokens.filter((token) =>
-          token.toLowerCase().includes(keyword.toLowerCase()),
-        ).length;
-        categoryScore += count * category.weight;
-      }
-      features.push(Math.min(categoryScore / 10, 1));
+    if (tokens.length === 0) {
+      return new Array(this.embeddingDimension).fill(0);
     }
 
-    // TF-IDF like scoring for important programming terms
-    const vocab = this.getProgrammingVocabulary();
-    const tokenFreq = this.calculateTokenFrequency(tokens);
-
-    for (const term of vocab.slice(0, 120)) {
-      // Use top 120 terms
-      const freq = tokenFreq.get(term.toLowerCase()) || 0;
-      const tf = tokens.length > 0 ? freq / tokens.length : 0;
-      features.push(Math.min(tf * 10, 1)); // Normalized TF
+    const vector = new Float32Array(this.embeddingDimension);
+    for (const token of tokens) {
+      const bucket = Math.abs(this.hashToken(token)) % this.embeddingDimension;
+      vector[bucket] += 1;
     }
 
-    // Pad to 134 features
-    while (features.length < 134) {
-      features.push(0);
-    }
-
-    return features.slice(0, 134);
+    return this.normalizeVector(Array.from(vector));
   }
 
-  /**
-   * Extract AST-based features
-   */
-  private extractASTFeatures(code: string): number[] {
-    const features: number[] = [];
-
-    // Declaration patterns
-    const declarations = {
-      variables: /(?:let|const|var)\s+\w+/g,
-      functions: /function\s+\w+/g,
-      classes: /class\s+\w+/g,
-      interfaces: /interface\s+\w+/g,
-    };
-
-    for (const [_, pattern] of Object.entries(declarations)) {
-      const count = (code.match(pattern) || []).length;
-      features.push(Math.min(count / 8, 1));
+  private ensureExpectedDimension(vector: number[]): number[] {
+    if (vector.length === this.embeddingDimension) {
+      return vector;
     }
-
-    // Expression complexity
-    const expressions = {
-      assignments: /=\s*[^=]/g,
-      comparisons: /[!=]==?|[<>]=?/g,
-      logical: /&&|\|\|/g,
-      arithmetic: /[+\-*/%]/g,
-    };
-
-    for (const [_, pattern] of Object.entries(expressions)) {
-      const count = (code.match(pattern) || []).length;
-      features.push(Math.min(count / 20, 1));
+    if (vector.length > this.embeddingDimension) {
+      return vector.slice(0, this.embeddingDimension);
     }
-
-    // Nesting depth estimation
-    let maxDepth = 0;
-    let currentDepth = 0;
-    for (const char of code) {
-      if (char === "{") currentDepth++;
-      if (char === "}") currentDepth--;
-      maxDepth = Math.max(maxDepth, currentDepth);
+    const padded = new Array(this.embeddingDimension).fill(0);
+    for (let i = 0; i < vector.length; i++) {
+      padded[i] = vector[i];
     }
-    features.push(Math.min(maxDepth / 8, 1));
-
-    // Pad to 96 features
-    while (features.length < 96) {
-      features.push(0);
-    }
-
-    return features.slice(0, 96);
+    return padded;
   }
 
-  /**
-   * Extract contextual features
-   */
-  private extractContextFeatures(code: string): number[] {
-    const features: number[] = [];
-
-    // Code quality indicators
-    const comments = (code.match(/\/\/.*|\/\*[\s\S]*?\*\//g) || []).join(
-      "",
-    ).length;
-    features.push(Math.min(code.length > 0 ? comments / code.length : 0, 1)); // Comment density
-
-    const strings = (code.match(/"[^"]*"|'[^']*'|`[^`]*`/g) || []).join(
-      "",
-    ).length;
-    features.push(Math.min(code.length > 0 ? strings / code.length : 0, 0.5)); // String density
-
-    // Line metrics
-    const lines = code.split("\n").length;
-    const avgLineLength = code.length / lines;
-    features.push(Math.min(lines / 100, 1));
-    features.push(Math.min(avgLineLength / 80, 1));
-
-    // Domain-specific patterns
-    const domains = {
-      web: /http|url|fetch|ajax|xhr|dom|html|css/gi,
-      database: /sql|query|select|insert|update|delete|join/gi,
-      testing: /test|spec|describe|it|expect|assert|mock/gi,
-      async: /async|await|promise|callback|then|catch/gi,
-      security: /auth|encrypt|decrypt|hash|token|jwt|bcrypt/gi,
-    };
-
-    for (const [_, pattern] of Object.entries(domains)) {
-      const matches = (code.match(pattern) || []).length;
-      features.push(Math.min(matches / 5, 1));
+  private hashToken(token: string): number {
+    let hash = 0;
+    for (let i = 0; i < token.length; i++) {
+      hash = (hash << 5) - hash + token.charCodeAt(i);
+      hash |= 0;
     }
-
-    // Pad to 58 features
-    while (features.length < 58) {
-      features.push(0);
-    }
-
-    return features.slice(0, 58);
+    return hash;
   }
 
   /**
@@ -910,107 +934,6 @@ export class SurrealVectorDB implements VectorStore {
   }
 
   /**
-   * Get programming-specific vocabulary
-   */
-  private getProgrammingVocabulary(): string[] {
-    return [
-      "function",
-      "class",
-      "method",
-      "variable",
-      "constant",
-      "parameter",
-      "argument",
-      "return",
-      "async",
-      "await",
-      "promise",
-      "callback",
-      "event",
-      "handler",
-      "component",
-      "service",
-      "controller",
-      "model",
-      "view",
-      "router",
-      "request",
-      "response",
-      "api",
-      "endpoint",
-      "middleware",
-      "auth",
-      "database",
-      "query",
-      "select",
-      "insert",
-      "update",
-      "delete",
-      "test",
-      "spec",
-      "mock",
-      "assert",
-      "expect",
-      "describe",
-      "config",
-      "env",
-      "settings",
-      "options",
-      "params",
-      "error",
-      "exception",
-      "try",
-      "catch",
-      "throw",
-      "finally",
-      "loop",
-      "iteration",
-      "condition",
-      "branch",
-      "switch",
-      "case",
-      "array",
-      "object",
-      "string",
-      "number",
-      "boolean",
-      "null",
-      "import",
-      "export",
-      "module",
-      "require",
-      "include",
-      "interface",
-      "type",
-      "generic",
-      "template",
-      "abstract",
-      "static",
-      "private",
-      "public",
-      "protected",
-      "readonly",
-      "constructor",
-      "destructor",
-      "extends",
-      "implements",
-      "super",
-    ];
-  }
-
-  /**
-   * Calculate token frequency
-   */
-  private calculateTokenFrequency(tokens: string[]): Map<string, number> {
-    const freq = new Map<string, number>();
-    for (const token of tokens) {
-      const lower = token.toLowerCase();
-      freq.set(lower, (freq.get(lower) || 0) + 1);
-    }
-    return freq;
-  }
-
-  /**
    * Preprocess code for embedding
    */
   private preprocessCodeForEmbedding(code: string): string {
@@ -1034,6 +957,31 @@ export class SurrealVectorDB implements VectorStore {
       hash = hash & hash; // Convert to 32bit integer
     }
     return hash.toString();
+  }
+
+  /**
+   * Compute cosine similarity between two vectors
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length === 0 || b.length === 0 || a.length !== b.length) {
+      return 0;
+    }
+
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    if (normA === 0 || normB === 0) {
+      return 0;
+    }
+
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
   /**
@@ -1098,184 +1046,6 @@ export class SurrealVectorDB implements VectorStore {
     );
     if (magnitude === 0) return vector;
     return vector.map((val) => val / magnitude);
-  }
-
-  private getVocabulary(): string[] {
-    // Common programming terms vocabulary
-    return [
-      "function",
-      "class",
-      "method",
-      "variable",
-      "const",
-      "let",
-      "var",
-      "return",
-      "if",
-      "else",
-      "for",
-      "while",
-      "loop",
-      "array",
-      "object",
-      "string",
-      "number",
-      "boolean",
-      "null",
-      "undefined",
-      "true",
-      "false",
-      "import",
-      "export",
-      "from",
-      "default",
-      "async",
-      "await",
-      "promise",
-      "callback",
-      "event",
-      "handler",
-      "component",
-      "props",
-      "state",
-      "render",
-      "dom",
-      "element",
-      "node",
-      "tree",
-      "data",
-      "type",
-      "interface",
-      "enum",
-      "struct",
-      "trait",
-      "impl",
-      "pub",
-      "private",
-      "public",
-      "protected",
-      "static",
-      "final",
-      "abstract",
-      "virtual",
-      "override",
-      "extends",
-      "implements",
-      "constructor",
-      "destructor",
-      "this",
-      "self",
-      "super",
-      "new",
-      "delete",
-      "malloc",
-      "free",
-      "memory",
-      "pointer",
-      "reference",
-      "value",
-      "copy",
-      "move",
-      "clone",
-      "borrow",
-      "lifetime",
-      "generic",
-      "template",
-      "macro",
-      "annotation",
-      "decorator",
-      "attribute",
-      "property",
-      "field",
-      "member",
-      "parameter",
-      "argument",
-      "result",
-      "error",
-      "exception",
-      "try",
-      "catch",
-      "finally",
-      "throw",
-      "raise",
-      "panic",
-      "test",
-      "assert",
-      "debug",
-      "log",
-      "print",
-      "console",
-      "output",
-      "input",
-      "file",
-      "path",
-      "directory",
-      "folder",
-      "read",
-      "write",
-      "create",
-      "delete",
-      "update",
-      "insert",
-      "select",
-      "query",
-      "database",
-      "table",
-      "column",
-      "index",
-      "key",
-      "value",
-      "pair",
-      "map",
-      "set",
-      "list",
-      "vector",
-      "stack",
-      "queue",
-      "heap",
-      "tree",
-      "graph",
-      "node",
-      "edge",
-      "vertex",
-      "algorithm",
-      "sort",
-      "search",
-      "find",
-      "filter",
-      "reduce",
-      "map",
-      "foreach",
-      "iterate",
-      "recursive",
-      "iteration",
-      "condition",
-      "check",
-      "validate",
-      "verify",
-      "process",
-      "thread",
-      "sync",
-      "async",
-      "parallel",
-      "concurrent",
-      "mutex",
-      "lock",
-      "atomic",
-      "volatile",
-      "safe",
-      "unsafe",
-      "security",
-      "encrypt",
-      "decrypt",
-      "hash",
-      "random",
-      "uuid",
-      "token",
-      "auth",
-      "login",
-      "logout",
-    ];
   }
 
   // Cleanup method

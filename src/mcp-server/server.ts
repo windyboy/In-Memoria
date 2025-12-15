@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -27,6 +30,23 @@ import {
     RateLimiter,
 } from "../utils/rate-limiter.js";
 
+function getPackageVersion(): string {
+    try {
+        const __dirname = dirname(fileURLToPath(import.meta.url));
+        const packagePath = join(__dirname, "..", "..", "package.json");
+        const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+        return typeof packageJson.version === "string"
+            ? packageJson.version
+            : "0.0.0";
+    } catch (error: unknown) {
+        Logger.warn(
+            "Failed to read package version; defaulting to 0.0.0",
+            error instanceof Error ? error.message : String(error),
+        );
+        return "0.0.0";
+    }
+}
+
 export class CodeCartographerMCP {
     private server: Server;
     private database!: SQLiteDatabase;
@@ -44,7 +64,7 @@ export class CodeCartographerMCP {
         this.server = new Server(
             {
                 name: "in-memoria",
-                version: "0.6.0",
+                version: getPackageVersion(),
             },
             {
                 capabilities: {
