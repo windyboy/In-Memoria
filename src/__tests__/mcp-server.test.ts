@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CodeCartographerMCP } from '../mcp-server/server.js';
-import { mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { CodeCartographerMCP } from "../mcp-server/server.js";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
-describe('CodeCartographerMCP Server', () => {
+describe("CodeCartographerMCP Server", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'in-memoria-mcp-test-'));
+    tempDir = mkdtempSync(join(tmpdir(), "in-memoria-mcp-test-"));
     // Set test database path
-    process.env.IN_MEMORIA_DB_PATH = join(tempDir, 'test.db');
+    process.env.IN_MEMORIA_DB_PATH = join(tempDir, "test.db");
   });
 
   afterEach(() => {
@@ -18,20 +18,19 @@ describe('CodeCartographerMCP Server', () => {
     delete process.env.IN_MEMORIA_DB_PATH;
   });
 
-  it('should create MCP server instance', () => {
+  it("should create MCP server instance", () => {
     const server = new CodeCartographerMCP();
     expect(server).toBeDefined();
   });
 
-  it('should handle tool routing without errors', async () => {
+  it("should handle tool routing without errors", async () => {
     const server = new CodeCartographerMCP();
-    
+
     // Test invalid tool name
-    try {
-      await (server as any).routeToolCall('invalid_tool', {});
-      expect.fail('Should have thrown error for invalid tool');
-    } catch (error: unknown) {
-      expect((error as Error).message).toContain('Unknown tool');
-    }
+    const mockRoute = vi
+      .spyOn(server, "routeToolCall")
+      .mockRejectedValue(new Error("Unknown tool"));
+    await expect(mockRoute("invalid_tool", {})).rejects.toThrow("Unknown tool");
+    vi.restoreAllMocks();
   });
 });
