@@ -3,9 +3,6 @@ import {
   BlueprintAnalyzer,
   FrameworkDetector,
 } from "../rust-bindings.js";
-import { SQLiteDatabase, SemanticConcept } from "../storage/sqlite-db.js";
-import { VectorStore } from "../storage/vector-store.js";
-import { nanoid } from "nanoid";
 import {
   CircuitBreaker,
   createRustAnalyzerCircuitBreaker,
@@ -53,6 +50,13 @@ export interface FileAnalysisResult {
   }>;
 }
 
+/**
+ * SemanticEngine - Pure Calculation Utility
+ * 
+ * This engine is now a stateless calculation utility that only performs analysis
+ * and returns results. It does NOT perform any database write operations.
+ * All storage operations are handled by the LearningService (single writer principle).
+ */
 export class SemanticEngine {
   private rustAnalyzer: InstanceType<typeof SemanticAnalyzer> | null = null;
   private rustCircuitBreaker: CircuitBreaker;
@@ -72,10 +76,7 @@ export class SemanticEngine {
   // Cache TTL in milliseconds (5 minutes)
   private readonly CACHE_TTL = 5 * 60 * 1000;
 
-  constructor(
-    private database: SQLiteDatabase,
-    private vectorDB: VectorStore,
-  ) {
+  constructor() {
     this.rustCircuitBreaker = createRustAnalyzerCircuitBreaker();
 
     // Create memoized versions of expensive operations
@@ -227,7 +228,13 @@ export class SemanticEngine {
     );
   }
 
-  async learnFromCodebase(
+  /**
+   * Analyze codebase and extract semantic concepts
+   * 
+   * This method now only performs analysis and returns results.
+   * It does NOT store anything in the database - that's handled by LearningService.
+   */
+  async extractSemanticConcepts(
     path: string,
     progressCallback?: (
       current: number,
@@ -246,7 +253,7 @@ export class SemanticEngine {
     }>
   > {
     try {
-      console.error(`🧠 Starting semantic learning for: ${path}`);
+      console.error(`🧠 Starting semantic analysis for: ${path}`);
 
       // Ensure Rust analyzer is initialized
       await this.initializeRustAnalyzer();
@@ -276,14 +283,14 @@ export class SemanticEngine {
         console.warn("Failed to estimate file count for progress tracking");
       }
 
-      // Add timeout protection for the entire learning process with periodic progress updates
+      // Add timeout protection for the entire analysis process with periodic progress updates
       const abortController = new AbortController();
       const timeoutPromise = new Promise<never>((_, reject) => {
         const timeoutId = setTimeout(() => {
           abortController.abort();
           reject(
             new Error(
-              "Learning process timed out after 5 minutes. This can happen with very large Svelte/Vue codebases.",
+              "Analysis process timed out after 5 minutes. This can happen with very large Svelte/Vue codebases.",
             ),
           );
         }, 300000); // 5 minutes
@@ -345,11 +352,9 @@ export class SemanticEngine {
         );
       }
 
-      console.error(`✅ Learned ${concepts.length} concepts from codebase`);
+      console.error(`✅ Extracted ${concepts.length} concepts from codebase`);
 
-      // Store in vector database for semantic search
-      await this.vectorDB.initialize();
-
+      // Return analysis results without storing them
       const result = concepts.map((c: any) => ({
         id: c.id,
         name: c.name,
@@ -363,67 +368,9 @@ export class SemanticEngine {
         relationships: c.relationships,
       }));
 
-      // Store concepts for persistence (with error handling and progress updates)
-      const totalToStore = result.length;
-      let stored = 0;
-
-      for (const concept of result) {
-        try {
-          this.database.insertSemanticConcept({
-            id: concept.id,
-            conceptName: concept.name,
-            conceptType: concept.type,
-            confidenceScore: concept.confidence,
-            relationships: concept.relationships,
-            evolutionHistory: {},
-            filePath: concept.filePath,
-            lineRange: concept.lineRange,
-          });
-
-          stored++;
-
-          // Report progress every 50 concepts or at the end
-          if (
-            progressCallback &&
-            (stored % 50 === 0 || stored === totalToStore)
-          ) {
-            progressCallback(
-              stored,
-              totalToStore,
-              `Storing concepts in database...`,
-            );
-          }
-
-          // Store in vector DB if it's a significant concept
-          if (concept.confidence > 0.5) {
-            try {
-              await this.vectorDB.storeCodeEmbedding(concept.name, {
-                id: concept.id,
-                filePath: concept.filePath,
-                functionName:
-                  concept.type === "function" ? concept.name : undefined,
-                className: concept.type === "class" ? concept.name : undefined,
-                language: this.detectLanguageFromPath(concept.filePath),
-                complexity: Math.floor(concept.confidence * 10),
-                lineCount: concept.lineRange.end - concept.lineRange.start + 1,
-                lastModified: new Date(),
-              });
-            } catch (vectorError) {
-              console.warn("Failed to store vector embedding:", vectorError);
-            }
-          }
-        } catch (conceptError) {
-          console.warn(
-            `Failed to store concept ${concept.name}:`,
-            conceptError,
-          );
-          // Continue processing other concepts
-        }
-      }
-
       return result;
     } catch (error: unknown) {
-      console.error("Learning error:", error);
+      console.error("Semantic analysis error:", error);
 
       // Provide more specific error messages for common issues
       if (
@@ -431,7 +378,7 @@ export class SemanticEngine {
         (error instanceof Error && error.message.includes("timed out"))
       ) {
         throw new Error(
-          "Learning process timed out. This commonly happens with:\n" +
+          "Analysis process timed out. This commonly happens with:\n" +
             "  • Large projects with many files\n" +
             "  • Projects with very large files (>1MB)\n" +
             "  • Complex nested directory structures\n" +
@@ -444,45 +391,7 @@ export class SemanticEngine {
     }
   }
 
-  async updateFromAnalysis(analysisData: any): Promise<void> {
-    try {
-      // Update the Rust analyzer with new analysis data
-      await this.rustAnalyzer.updateFromAnalysis(JSON.stringify(analysisData));
 
-      // Update local intelligence based on the analysis
-      if (analysisData.change && analysisData.impact.affectedConcepts) {
-        for (const conceptName of analysisData.impact.affectedConcepts) {
-          const existingConcepts = this.database.getSemanticConcepts();
-          const concept = existingConcepts.find(
-            (c) => c.conceptName === conceptName,
-          );
-
-          if (concept) {
-            // Update concept's evolution history
-            const updatedHistory = {
-              ...concept.evolutionHistory,
-              changes: [
-                ...(concept.evolutionHistory.changes || []),
-                {
-                  timestamp: new Date(),
-                  changeType: analysisData.change.type,
-                  confidence: analysisData.impact.confidence,
-                },
-              ],
-            };
-
-            this.database.insertSemanticConcept({
-              ...concept,
-              evolutionHistory: updatedHistory,
-              confidenceScore: Math.min(1.0, concept.confidenceScore + 0.1), // Boost confidence
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to update from analysis:", error);
-    }
-  }
 
   async findRelatedConcepts(conceptId: string): Promise<string[]> {
     try {
@@ -493,33 +402,7 @@ export class SemanticEngine {
     }
   }
 
-  async searchSemanticallySimilar(
-    query: string,
-    limit: number = 5,
-  ): Promise<
-    Array<{
-      concept: string;
-      similarity: number;
-      filePath: string;
-    }>
-  > {
-    try {
-      await this.vectorDB.initialize();
-      const results = await this.vectorDB.findSimilarCode(query, limit);
 
-      return results.map((result) => ({
-        concept:
-          result.metadata.functionName ||
-          result.metadata.className ||
-          "unknown",
-        similarity: result.similarity,
-        filePath: result.metadata.filePath,
-      }));
-    } catch (error) {
-      console.error("Semantic search error:", error);
-      return [];
-    }
-  }
 
   private async fallbackAnalysis(
     path: string,

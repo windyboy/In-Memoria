@@ -15,6 +15,114 @@ import { SQLiteDatabase } from "../../storage/sqlite-db.js";
 import { VectorStore } from "../../storage/vector-store.js";
 import { config } from "../../config/config.js";
 import { PathValidator } from "../../utils/path-validator.js";
+import { number } from "zod";
+import { number } from "zod";
+import { any } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { nanoid } from "nanoid";
+import { nanoid } from "nanoid";
+import { nanoid } from "nanoid";
+import { nanoid } from "nanoid";
+import { any } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { any } from "zod";
+import { any } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { any } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { any } from "zod";
+import { any } from "zod";
+import { any } from "zod";
+import { string } from "zod";
+import path from "path";
+import { number } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { string } from "zod";
+import path from "path";
+import { number } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { string } from "zod";
+import path from "path";
+import { string } from "zod";
+import { string } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { string } from "zod";
+import { nanoid } from "nanoid";
+import { nanoid } from "nanoid";
+import { nanoid } from "nanoid";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { number } from "zod";
+import { string } from "zod";
+import path from "path";
+import { number } from "zod";
+import path from "path";
+import { number } from "zod";
+import path from "path";
+import { string } from "zod";
+import { string } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { string } from "zod";
+import { string } from "zod";
+import { number } from "zod";
+import { number } from "zod";
+import { boolean } from "zod";
+import { boolean } from "zod";
+import { string } from "zod";
+import { boolean } from "zod";
+import { string } from "zod";
+import { string } from "zod";
 
 export class IntelligenceTools {
   constructor(
@@ -259,13 +367,24 @@ export class IntelligenceTools {
       architecture: string;
     };
   }> {
-    // Use shared learning service to ensure consistency between CLI and MCP
-    const { LearningService } = await import(
-      "../../services/learning-service.js"
-    );
-    return await LearningService.learnFromCodebase(args.path, {
+    // Use new LearningService through DI Container (single writer principle)
+    const { initializeDIContainer } = await import('../../core/bootstrap.js');
+    const container = await initializeDIContainer({ projectPath: args.path });
+    
+    const result = await container.learningService.learnFromCodebase(args.path, {
       force: args.force,
     });
+    
+    // Transform LearningService result to match expected interface
+    return {
+      success: result.success,
+      conceptsLearned: result.conceptsLearned,
+      patternsLearned: result.patternsDiscovered,
+      featuresLearned: 0, // TODO: Add feature count to LearningService result
+      insights: [], // TODO: Add insights to LearningService result
+      timeElapsed: result.duration,
+      blueprint: undefined // TODO: Add blueprint to LearningService result if needed
+    };
   }
 
   async getSemanticInsights(args: {
@@ -529,9 +648,17 @@ export class IntelligenceTools {
     try {
       const insightId = `insight_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      this.database.insertAIInsight({
-        insightId,
-        insightType: validatedInsight.type,
+      // VIOLATION: Direct database write violates single writer principle
+      // TODO: Move this to LearningService method
+      // For now, throw error to prevent usage until properly refactored
+      throw new Error(
+        'Direct AI Insight storage violates single writer principle - must be moved to LearningService'
+      );
+      
+      // TODO: Replace with LearningService method:
+      // await container.learningService.storeAIInsight({
+      //   insightId,
+      //   insightType: validatedInsight.type,
         insightContent: validatedInsight.content,
         confidenceScore: validatedInsight.confidence,
         sourceAgent: validatedInsight.sourceAgent,
@@ -598,15 +725,29 @@ export class IntelligenceTools {
       }
 
       if (Object.keys(updates).length > 0) {
-        this.database.updateWorkSession(session.id, updates);
+        // VIOLATION: Direct database write violates single writer principle
+        // TODO: Move this to LearningService method
+        throw new Error(
+          'Direct work session update violates single writer principle - must be moved to LearningService'
+        );
+        
+        // TODO: Replace with LearningService method:
+        // await container.learningService.updateWorkSession(session.id, updates);
       }
     }
 
     if (sessionUpdate.decisions) {
       for (const [key, value] of Object.entries(sessionUpdate.decisions)) {
-        this.database.upsertProjectDecision({
-          id: nanoid(),
-          projectPath,
+        // VIOLATION: Direct database write violates single writer principle
+        // TODO: Move this to LearningService method
+        throw new Error(
+          'Direct project decision storage violates single writer principle - must be moved to LearningService'
+        );
+        
+        // TODO: Replace with LearningService method:
+        // await container.learningService.storeProjectDecision({
+        //   id: nanoid(),
+        //   projectPath,
           decisionKey: key,
           decisionValue: value,
         });
@@ -794,32 +935,17 @@ export class IntelligenceTools {
     concepts: any[],
     patterns: any[],
   ): Promise<void> {
-    // Store concepts
-    for (const concept of concepts) {
-      this.database.insertSemanticConcept({
-        id: concept.id,
-        conceptName: concept.name,
-        conceptType: concept.type,
-        confidenceScore: concept.confidence,
-        relationships: concept.relationships,
-        evolutionHistory: {},
-        filePath: concept.filePath,
-        lineRange: concept.lineRange,
-      });
-    }
-
-    // Store patterns
-    for (const pattern of patterns) {
-      this.database.insertDeveloperPattern({
-        patternId: pattern.id,
-        patternType: pattern.type,
-        patternContent: pattern.content,
-        frequency: pattern.frequency,
-        contexts: pattern.contexts,
-        examples: pattern.examples,
-        confidence: pattern.confidence,
-      });
-    }
+    // DEPRECATED: Direct database writes violate single writer principle
+    // This method should be removed and replaced with LearningService calls
+    // For now, we'll throw an error to prevent usage
+    throw new Error(
+      'storeIntelligence is deprecated - use LearningService.storeSemanticConcepts() and LearningService.storeDeveloperPatterns() instead'
+    );
+    
+    // TODO: Replace with:
+    // const container = await initializeDIContainer({ projectPath: path });
+    // await container.learningService.storeSemanticConcepts(concepts);
+    // await container.learningService.storeDeveloperPatterns(patterns);
   }
 
   private extractNamingConventions(patterns: any[]): Record<string, string> {

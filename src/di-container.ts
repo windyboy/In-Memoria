@@ -171,7 +171,7 @@ export function initializeDIContainer(options: DIContainerConfig = {}): DIContai
     container.registerFactory(ServiceKeys.SEMANTIC_ENGINE, () => {
         const database = container.get<SQLiteDatabase>(ServiceKeys.DATABASE);
         const vectorStore = container.get<VectorStore>(ServiceKeys.VECTOR_STORE);
-        return new SemanticEngine(database, vectorStore);
+        return new SemanticEngine();
     });
 
     container.registerFactory(ServiceKeys.PATTERN_ENGINE, () => {

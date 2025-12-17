@@ -373,10 +373,8 @@ export class ChangeAnalyzer extends EventEmitter {
       await this.patternEngine.learnFromAnalysis(analysis);
     }
 
-    // Update semantic understanding
-    if (analysis.intelligence.conceptsUpdated > 0) {
-      await this.semanticEngine.updateFromAnalysis(analysis);
-    }
+    // Note: Semantic understanding updates are now handled by LearningService
+    // The SemanticEngine is now a pure utility and doesn't handle storage operations
   }
 
   private createMinimalAnalysis(change: FileChange): ChangeAnalysis {

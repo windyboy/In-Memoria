@@ -27,8 +27,18 @@ export interface LearningOptions {
 }
 
 /**
- * Shared learning service used by both CLI and MCP tools
- * Ensures consistent behavior across all interfaces
+ * DEPRECATED: This learning service violates the single writer principle
+ * 
+ * This class contains direct database write operations which violate the 
+ * single writer principle established in Phase 2 of the refactor.
+ * 
+ * Use the new LearningService from src/core/services/LearningService.ts instead:
+ * 
+ * const { initializeDIContainer } = await import('../core/bootstrap.js');
+ * const container = await initializeDIContainer({ projectPath });
+ * await container.learningService.learnFromCodebase(path, options);
+ * 
+ * @deprecated Use src/core/services/LearningService.ts through DI Container
  */
 export class LearningService {
   /**
@@ -65,10 +75,7 @@ export class LearningService {
       insights.push(`⚠️  Could not check backend health: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
-    const projectSemanticEngine = new SemanticEngine(
-      projectDatabase,
-      projectVectorDB,
-    );
+    const projectSemanticEngine = new SemanticEngine();
     const projectPatternEngine = new PatternEngine(projectDatabase);
 
     try {
@@ -112,7 +119,7 @@ export class LearningService {
 
       // Phase 2: Deep semantic learning
       insights.push("🧠 Phase 2: Learning semantic concepts...");
-      const concepts = await projectSemanticEngine.learnFromCodebase(
+      const concepts = await projectSemanticEngine.extractSemanticConcepts(
         path,
         options.progressCallback,
       );

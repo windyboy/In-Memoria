@@ -239,7 +239,7 @@ export class DebugTools {
       const database = new SQLiteDatabase(dbPath);
       const embeddingConfig = config.getEmbeddingConfig();
       const vectorDB: VectorStore = createVectorStore(embeddingConfig);
-      const semanticEngine = new SemanticEngine(database, vectorDB);
+      const semanticEngine = new SemanticEngine();
       const patternEngine = new PatternEngine(database);
 
       console.log("  ✅ Intelligence components initialized successfully");

@@ -40,7 +40,7 @@ interface User {
     
     // Test learning from a directory 
     console.log('\n📚 Testing codebase learning...');
-    const learnedConcepts = await analyzer.learnFromCodebase('./src/engines');
+    const learnedConcepts = await analyzer.extractSemanticConcepts('./src/engines');
     console.log(`✅ Learned ${learnedConcepts.length} concepts from ./src/engines:`);
     learnedConcepts.slice(0, 10).forEach(concept => {
       console.log(`   - ${concept.name} (${concept.concept_type}) in ${concept.file_path}`);

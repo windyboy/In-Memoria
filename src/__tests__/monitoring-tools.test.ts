@@ -21,7 +21,7 @@ describe('MonitoringTools', () => {
     const dbPath = join(tempDir, 'test.db');
     database = new SQLiteDatabase(dbPath);
     vectorDB = new SemanticVectorDB(); // Uses default config
-    semanticEngine = new SemanticEngine(database, vectorDB);
+    semanticEngine = new SemanticEngine();
     patternEngine = new PatternEngine(database);
     monitoringTools = new MonitoringTools(semanticEngine, patternEngine, database, dbPath);
   });

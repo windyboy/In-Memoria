@@ -11,20 +11,18 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { MCPErrorCode } from "../utils/error-types.js";
 
-import { CoreAnalysisTools } from "./tools/core-analysis.js";
-import { IntelligenceTools } from "./tools/intelligence-tools.js";
-import { AutomationTools } from "./tools/automation-tools.js";
-import { MonitoringTools } from "./tools/monitoring-tools.js";
-import { SemanticEngine } from "../engines/semantic-engine.js";
-import { PatternEngine } from "../engines/pattern-engine.js";
-import { SQLiteDatabase } from "../storage/sqlite-db.js";
-import { createVectorStore } from "../storage/vector-factory.js";
-import { SurrealVectorDB } from "../storage/vector-db.js";
-import { VectorStore } from "../storage/vector-store.js";
-import { config } from "../config/config.js";
+// Import DI Container and bootstrap
+import { initializeDIContainer, disposeDIContainer } from "../core/bootstrap.js";
+import { Container } from "../core/container/container.js";
+
+// Import pure MCP adapters
+import { CoreAnalysisAdapter } from "./adapters/core-analysis-adapter.js";
+import { IntelligenceAdapter } from "./adapters/intelligence-adapter.js";
+import { AutomationAdapter } from "./adapters/automation-adapter.js";
+import { MonitoringAdapter } from "./adapters/monitoring-adapter.js";
+
 import { validateInput, VALIDATION_SCHEMAS } from "./validation.js";
 import { Logger } from "../utils/logger.js";
-import { CircuitBreaker } from "../utils/circuit-breaker.js";
 import {
     createToolCallRateLimiter,
     RateLimiter,
@@ -49,14 +47,11 @@ function getPackageVersion(): string {
 
 export class CodeCartographerMCP {
     private server: Server;
-    private database!: SQLiteDatabase;
-    private vectorDB!: VectorStore;
-    private semanticEngine!: SemanticEngine;
-    private patternEngine!: PatternEngine;
-    private coreTools!: CoreAnalysisTools;
-    private intelligenceTools!: IntelligenceTools;
-    private automationTools!: AutomationTools;
-    private monitoringTools!: MonitoringTools;
+    private container!: Container;
+    private coreAnalysisAdapter!: CoreAnalysisAdapter;
+    private intelligenceAdapter!: IntelligenceAdapter;
+    private automationAdapter!: AutomationAdapter;
+    private monitoringAdapter!: MonitoringAdapter;
     private rateLimiter: RateLimiter;
     private toolRegistry: Map<string, (args: any) => Promise<any>> = new Map();
 
@@ -80,176 +75,91 @@ export class CodeCartographerMCP {
     }
 
     private initializeToolRegistry(): void {
-        // Core Analysis Tools
+        // Core Analysis Tools (Pure Adapters)
         this.toolRegistry.set("analyze_codebase", (args) =>
-            this.coreTools.analyzeCodebase(args),
+            this.coreAnalysisAdapter.analyzeCodebase(args),
         );
         this.toolRegistry.set("search_codebase", (args) =>
-            this.coreTools.searchCodebase(args),
+            this.coreAnalysisAdapter.searchCodebase(args),
         );
 
-        // Intelligence Tools
+        // Intelligence Tools (Pure Adapters)
         this.toolRegistry.set("learn_codebase_intelligence", (args) =>
-            this.intelligenceTools.learnCodebaseIntelligence(args),
+            this.intelligenceAdapter.learnCodebaseIntelligence(args),
         );
         this.toolRegistry.set("get_semantic_insights", (args) =>
-            this.intelligenceTools.getSemanticInsights(args),
+            this.intelligenceAdapter.getSemanticInsights(args),
         );
         this.toolRegistry.set("get_pattern_recommendations", (args) =>
-            this.intelligenceTools.getPatternRecommendations(args),
+            this.intelligenceAdapter.getPatternRecommendations(args),
         );
         this.toolRegistry.set("predict_coding_approach", (args) =>
-            this.intelligenceTools.predictCodingApproach(args),
+            this.intelligenceAdapter.predictCodingApproach(args),
         );
         this.toolRegistry.set("get_developer_profile", (args) =>
-            this.intelligenceTools.getDeveloperProfile(args),
+            this.intelligenceAdapter.getDeveloperProfile(args),
         );
         this.toolRegistry.set("contribute_insights", (args) =>
-            this.intelligenceTools.contributeInsights(args),
+            this.intelligenceAdapter.contributeInsights(args),
         );
         this.toolRegistry.set("get_project_blueprint", (args) =>
-            this.intelligenceTools.getProjectBlueprint(args),
+            this.intelligenceAdapter.getProjectBlueprint(args),
         );
 
-        // Automation Tools
+        // Automation Tools (Pure Adapters)
         this.toolRegistry.set("auto_learn_if_needed", (args) =>
-            this.automationTools.autoLearnIfNeeded(args),
+            this.automationAdapter.autoLearnIfNeeded(args),
         );
 
-        // Monitoring Tools
+        // Monitoring Tools (Pure Adapters)
         this.toolRegistry.set("get_system_status", (args) =>
-            this.monitoringTools.getSystemStatus(args),
+            this.monitoringAdapter.getSystemStatus(args),
         );
         this.toolRegistry.set("get_intelligence_metrics", (args) =>
-            this.monitoringTools.getIntelligenceMetrics(args),
+            this.monitoringAdapter.getIntelligenceMetrics(args),
         );
         this.toolRegistry.set("get_performance_status", (args) =>
-            this.monitoringTools.getPerformanceStatus(args),
+            this.monitoringAdapter.getPerformanceStatus(args),
         );
         this.toolRegistry.set("health_check", (args) =>
-            this.monitoringTools.healthCheck(args),
+            this.monitoringAdapter.healthCheck(args),
         );
     }
 
     private async initializeComponents(): Promise<void> {
         try {
-            Logger.info("Initializing In Memoria components...");
+            Logger.info("Initializing In Memoria components with DI Container...");
 
-            // Initialize storage using configuration management
-            // Database path is determined by config based on the analyzed project
-            const appConfig = config.getConfig();
-            const dbPath = config.getDatabasePath(); // Will use current directory as project path
-            Logger.info(`Attempting to initialize database at: ${dbPath}`);
+            // Initialize DI Container with current working directory as project path
+            const projectPath = process.cwd();
+            Logger.info(`Initializing DI Container for project: ${projectPath}`);
+            
+            this.container = await initializeDIContainer({ projectPath });
+            Logger.info("DI Container initialized successfully");
 
-            try {
-                this.database = new SQLiteDatabase(dbPath);
-                Logger.info("SQLite database initialized successfully");
-            } catch (dbError: unknown) {
-                Logger.error("Failed to initialize SQLite database:", dbError);
-                Logger.error(
-                    "The MCP server will continue with limited functionality",
-                );
-                throw new Error(
-                    `Database initialization failed: ${dbError instanceof Error ? dbError.message : String(dbError)}`,
-                );
-            }
-
-            const embeddingConfig = config.getEmbeddingConfig();
-
-            // Create circuit breaker for vector DB initialization with retry and fallback
-            const vectorDBCircuitBreaker = new CircuitBreaker({
-                failureThreshold: 3, // 3 failures before opening
-                recoveryTimeout: 60000, // 1 minute recovery time
-                requestTimeout: 30000, // 30 seconds per initialization attempt
-                monitoringWindow: 300000, // 5 minute monitoring window
-            });
-
-            try {
-                await vectorDBCircuitBreaker.execute(
-                    async () => {
-                        this.vectorDB = createVectorStore(embeddingConfig, vectorDBCircuitBreaker);
-                        await this.vectorDB.initialize();
-                        
-                        // Log backend information for diagnostics
-                        const backendInfo = this.vectorDB.getBackendInfo();
-                        Logger.info(`Vector backend: ${backendInfo.type} v${backendInfo.version}`);
-                        Logger.info(`Backend capabilities: ${JSON.stringify(backendInfo.capabilities)}`);
-                    },
-                    async () => {
-                        Logger.warn(
-                            "Vector database initialization failed after retries, falling back to local SurrealDB",
-                        );
-                        this.vectorDB = new SurrealVectorDB(
-                            undefined,
-                            embeddingConfig,
-                        );
-                        await this.vectorDB.initialize();
-                        
-                        // Log fallback backend information
-                        const backendInfo = this.vectorDB.getBackendInfo();
-                        Logger.info(`Fallback backend: ${backendInfo.type} v${backendInfo.version}`);
-                    },
-                );
-                Logger.info("Vector database initialized successfully");
-            } catch (error) {
-                Logger.error(
-                    "Critical error: Even fallback vector database initialization failed:",
-                    error,
-                );
-                throw new Error(
-                    "Unable to initialize any vector database backend",
-                );
-            }
-
-            // Initialize engines
-            this.semanticEngine = new SemanticEngine(
-                this.database,
-                this.vectorDB,
-            );
-            this.patternEngine = new PatternEngine(this.database);
-            Logger.info("Analysis engines initialized");
-
-            // Initialize tool collections
-            this.coreTools = new CoreAnalysisTools(
-                this.semanticEngine,
-                this.patternEngine,
-                this.database,
-            );
-            this.intelligenceTools = new IntelligenceTools(
-                this.semanticEngine,
-                this.patternEngine,
-                this.database,
-                this.vectorDB, // Pass shared vectorDB instance
-            );
-            this.automationTools = new AutomationTools(
-                this.semanticEngine,
-                this.patternEngine,
-                this.database,
-            );
-            this.monitoringTools = new MonitoringTools(
-                this.semanticEngine,
-                this.patternEngine,
-                this.database,
-                dbPath,
-            );
-            Logger.info("Tool collections initialized");
+            // Initialize pure MCP adapters that use services through DI Container
+            this.coreAnalysisAdapter = new CoreAnalysisAdapter(this.container);
+            this.intelligenceAdapter = new IntelligenceAdapter(this.container);
+            this.automationAdapter = new AutomationAdapter(this.container);
+            this.monitoringAdapter = new MonitoringAdapter(this.container);
+            Logger.info("MCP adapters initialized");
 
             // Initialize tool registry for efficient routing
             this.initializeToolRegistry();
 
-            // Perform initial health check
+            // Perform initial health check using diagnostic service
             try {
-                const healthStatus = await this.vectorDB.getHealthStatus();
-                Logger.info(`Vector store health: ${healthStatus.status} (${healthStatus.responseTime}ms)`);
+                const healthStatus = await this.container.diagnosticService.getHealthStatus();
+                Logger.info(`System health: ${healthStatus.status} - ${healthStatus.summary}`);
                 
                 if (healthStatus.status === 'unhealthy') {
-                    Logger.warn("Vector store is unhealthy but continuing initialization");
+                    Logger.warn("System is unhealthy but continuing initialization");
                 }
             } catch (error) {
                 Logger.warn("Could not perform initial health check:", error);
             }
 
-            Logger.info("In Memoria components initialized successfully");
+            Logger.info("In Memoria components initialized successfully with service layer");
         } catch (error: unknown) {
             Logger.error("Failed to initialize In Memoria components:", error);
             Logger.error(
@@ -267,10 +177,10 @@ export class CodeCartographerMCP {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             return {
                 tools: [
-                    ...this.coreTools.tools,
-                    ...this.intelligenceTools.tools,
-                    ...this.automationTools.tools,
-                    ...this.monitoringTools.tools,
+                    ...this.coreAnalysisAdapter.tools,
+                    ...this.intelligenceAdapter.tools,
+                    ...this.automationAdapter.tools,
+                    ...this.monitoringAdapter.tools,
                 ],
             };
         });
@@ -356,10 +266,10 @@ export class CodeCartographerMCP {
      */
     getAllTools(): any[] {
         return [
-            ...this.coreTools.tools,
-            ...this.intelligenceTools.tools,
-            ...this.automationTools.tools,
-            ...this.monitoringTools.tools,
+            ...this.coreAnalysisAdapter.tools,
+            ...this.intelligenceAdapter.tools,
+            ...this.automationAdapter.tools,
+            ...this.monitoringAdapter.tools,
         ];
     }
 
@@ -371,26 +281,14 @@ export class CodeCartographerMCP {
     }
 
     async stop(): Promise<void> {
-        // Clean up semantic engine resources
-        if (this.semanticEngine) {
-            this.semanticEngine.cleanup();
-        }
-
-        // Close vector database
-        if (this.vectorDB) {
+        // Dispose DI Container (handles cleanup of all services)
+        if (this.container) {
             try {
-                await this.vectorDB.close();
+                await disposeDIContainer();
+                Logger.info("DI Container disposed successfully");
             } catch (error) {
-                console.warn(
-                    "Warning: Failed to close vector database:",
-                    error,
-                );
+                Logger.warn("Warning: Failed to dispose DI Container:", error);
             }
-        }
-
-        // Close SQLite database
-        if (this.database) {
-            this.database.close();
         }
 
         // Clean up rate limiter

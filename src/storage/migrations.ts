@@ -409,6 +409,52 @@ export class DatabaseMigrator {
         ALTER TABLE project_metadata_old RENAME TO project_metadata;
       `
     });
+
+    // Migration 8: Simplify database schema to four core tables
+    this.migrations.push({
+      version: 8,
+      name: 'simplify_schema',
+      up: this.loadMigrationFile('008_simplify_schema.sql'),
+      down: `
+        -- WARNING: This rollback will recreate the complex schema but data may be lost
+        -- This is a destructive migration that cannot be fully rolled back
+        SELECT 'WARNING: Rolling back schema simplification may cause data loss' as warning;
+        
+        -- Recreate the basic structure of dropped tables (empty)
+        CREATE TABLE IF NOT EXISTS architectural_decisions (
+          decision_id TEXT PRIMARY KEY,
+          decision_context TEXT NOT NULL,
+          decision_rationale TEXT,
+          alternatives_considered TEXT,
+          impact_analysis TEXT,
+          decision_date DATETIME DEFAULT (datetime('now', 'utc')),
+          files_affected TEXT,
+          created_at DATETIME DEFAULT (datetime('now', 'utc'))
+        );
+        
+        CREATE TABLE IF NOT EXISTS file_intelligence (
+          file_path TEXT PRIMARY KEY,
+          file_hash TEXT NOT NULL,
+          semantic_concepts TEXT,
+          patterns_used TEXT,
+          complexity_metrics TEXT,
+          dependencies TEXT,
+          last_analyzed DATETIME DEFAULT (datetime('now', 'utc')),
+          created_at DATETIME DEFAULT (datetime('now', 'utc'))
+        );
+        
+        CREATE TABLE IF NOT EXISTS ai_insights (
+          insight_id TEXT PRIMARY KEY,
+          insight_type TEXT NOT NULL,
+          insight_content TEXT NOT NULL,
+          confidence_score REAL DEFAULT 0.0,
+          source_agent TEXT,
+          validation_status TEXT DEFAULT 'pending',
+          impact_prediction TEXT,
+          created_at DATETIME DEFAULT (datetime('now', 'utc'))
+        );
+      `
+    });
   }
 
   private loadMigrationFile(filename: string): string {
@@ -417,7 +463,12 @@ export class DatabaseMigrator {
       return readFileSync(migrationPath, 'utf-8');
     }
     // Fallback to schema.sql for initial migration
-    return readFileSync(join(__dirname, 'schema.sql'), 'utf-8');
+    const schemaPath = join(__dirname, 'schema.sql');
+    if (existsSync(schemaPath)) {
+      return readFileSync(schemaPath, 'utf-8');
+    }
+    // If no schema.sql exists, return empty string (will be handled by validation)
+    return '';
   }
 
   getCurrentVersion(): number {
@@ -506,6 +557,12 @@ export class DatabaseMigrator {
           this.validateTableExists(['work_sessions', 'project_decisions']);
           this.validateIndexExists(['idx_work_sessions_project', 'idx_work_sessions_updated', 'idx_project_decisions_key']);
           break;
+        case 7: // Unique constraint on project_path
+          this.validateTableExists(['project_metadata']);
+          break;
+        case 8: // Simplified schema
+          this.validateSimplifiedSchema();
+          break;
         default:
           // Generic validation - check migration was recorded
           break;
@@ -520,14 +577,25 @@ export class DatabaseMigrator {
    */
   private validateDatabaseIntegrity(): void {
     try {
-      // Check all required tables exist
-      const requiredTables = [
-        'semantic_concepts', 'developer_patterns', 'file_intelligence',
-        'architectural_decisions', 'shared_patterns', 'ai_insights',
-        'project_metadata', 'migrations',
-        'feature_map', 'entry_points', 'key_directories',
-        'work_sessions', 'project_decisions'
-      ];
+      // Check all required tables exist (simplified schema after migration 8)
+      const currentVersion = this.getCurrentVersion();
+      let requiredTables: string[];
+      
+      if (currentVersion >= 8) {
+        // Simplified schema - only four core tables
+        requiredTables = [
+          'semantic_concepts', 'developer_patterns', 'feature_map', 'project_metadata', 'migrations'
+        ];
+      } else {
+        // Legacy schema - all tables
+        requiredTables = [
+          'semantic_concepts', 'developer_patterns', 'file_intelligence',
+          'architectural_decisions', 'shared_patterns', 'ai_insights',
+          'project_metadata', 'migrations',
+          'feature_map', 'entry_points', 'key_directories',
+          'work_sessions', 'project_decisions'
+        ];
+      }
 
       for (const table of requiredTables) {
         this.validateTableExists([table]);
@@ -596,22 +664,96 @@ export class DatabaseMigrator {
     }
   }
 
+  private validateSimplifiedSchema(): void {
+    // Validate that only the four core tables exist
+    const requiredTables = ['semantic_concepts', 'developer_patterns', 'feature_map', 'project_metadata'];
+    this.validateTableExists(requiredTables);
+    
+    // Validate that legacy tables have been dropped
+    const legacyTables = [
+      'architectural_decisions', 'shared_patterns', 'ai_insights', 
+      'file_intelligence', 'vector_cache', 'entry_points', 
+      'key_directories', 'work_sessions', 'project_decisions'
+    ];
+    
+    for (const table of legacyTables) {
+      const result = this.db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' AND name=?
+      `).get(table);
+      
+      if (result) {
+        throw new Error(`Legacy table '${table}' should have been dropped but still exists`);
+      }
+    }
+    
+    // Validate simplified table structures
+    this.validateSimplifiedTableStructure('semantic_concepts', ['id', 'name', 'type', 'confidence', 'context', 'created_at']);
+    this.validateSimplifiedTableStructure('developer_patterns', ['id', 'name', 'category', 'frequency', 'examples', 'created_at']);
+    this.validateSimplifiedTableStructure('feature_map', ['id', 'feature_name', 'file_paths', 'confidence', 'created_at']);
+    this.validateSimplifiedTableStructure('project_metadata', ['project_path', 'last_learned', 'version', 'languages', 'frameworks', 'stats']);
+    
+    // Validate required indexes exist
+    const requiredIndexes = [
+      'idx_semantic_concepts_type', 'idx_semantic_concepts_name',
+      'idx_developer_patterns_category', 'idx_developer_patterns_frequency',
+      'idx_feature_map_name', 'idx_project_metadata_learned'
+    ];
+    this.validateIndexExists(requiredIndexes);
+  }
+
+  private validateSimplifiedTableStructure(tableName: string, expectedColumns: string[]): void {
+    const tableInfo = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    const actualColumns = tableInfo.map(col => col.name);
+    
+    for (const expectedColumn of expectedColumns) {
+      if (!actualColumns.includes(expectedColumn)) {
+        throw new Error(`Table '${tableName}' is missing required column '${expectedColumn}'`);
+      }
+    }
+  }
+
   private validateReferentialIntegrity(): void {
     // Check for any obvious data corruption
     try {
-      // Validate JSON columns are valid JSON
-      const concepts = this.db.prepare(`
-        SELECT id, relationships, evolution_history FROM semantic_concepts 
-        WHERE relationships != '' OR evolution_history != ''
+      // Validate JSON columns are valid JSON in simplified schema
+      const patterns = this.db.prepare(`
+        SELECT id, examples FROM developer_patterns 
+        WHERE examples IS NOT NULL AND examples != ''
         LIMIT 10
-      `).all() as Array<{ id: string; relationships: string; evolution_history: string }>;
+      `).all() as Array<{ id: string; examples: string }>;
       
-      for (const concept of concepts) {
-        if (concept.relationships && concept.relationships !== '') {
-          JSON.parse(concept.relationships); // Will throw if invalid
+      for (const pattern of patterns) {
+        if (pattern.examples && pattern.examples !== '') {
+          JSON.parse(pattern.examples); // Will throw if invalid
         }
-        if (concept.evolution_history && concept.evolution_history !== '') {
-          JSON.parse(concept.evolution_history); // Will throw if invalid
+      }
+      
+      const features = this.db.prepare(`
+        SELECT id, file_paths FROM feature_map 
+        WHERE file_paths IS NOT NULL AND file_paths != ''
+        LIMIT 10
+      `).all() as Array<{ id: string; file_paths: string }>;
+      
+      for (const feature of features) {
+        if (feature.file_paths && feature.file_paths !== '') {
+          JSON.parse(feature.file_paths); // Will throw if invalid
+        }
+      }
+      
+      const projects = this.db.prepare(`
+        SELECT project_path, languages, frameworks, stats FROM project_metadata 
+        LIMIT 10
+      `).all() as Array<{ project_path: string; languages: string; frameworks: string; stats: string }>;
+      
+      for (const project of projects) {
+        if (project.languages && project.languages !== '') {
+          JSON.parse(project.languages); // Will throw if invalid
+        }
+        if (project.frameworks && project.frameworks !== '') {
+          JSON.parse(project.frameworks); // Will throw if invalid
+        }
+        if (project.stats && project.stats !== '') {
+          JSON.parse(project.stats); // Will throw if invalid
         }
       }
       

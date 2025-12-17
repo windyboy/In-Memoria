@@ -28,7 +28,7 @@ async function testCachingConsistency() {
     // Initialize engines
     const db = new SQLiteDatabase(dbPath);
     const vectorDB = new SemanticVectorDB();
-    const engine = new SemanticEngine(db, vectorDB);
+    const engine = new SemanticEngine();
     
     console.log('📝 Test 1: Analyze initial content');
     writeFileSync(testFile, testContent1);
@@ -59,7 +59,7 @@ async function testCachingConsistency() {
     
     // Test with new SemanticEngine instance (fresh instance)
     console.log('\n📝 Test 4: New engine instance with same content');
-    const engine2 = new SemanticEngine(new SQLiteDatabase(dbPath + '2'), new SemanticVectorDB());
+    const engine2 = new SemanticEngine();
     const concepts4 = await engine2.analyzeFileContent(testFile, testContent2);
     console.log(`   Found ${concepts4.length} concepts`);
     concepts4.forEach(c => console.log(`   - ${c.name} (${c.type})`));

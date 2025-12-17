@@ -11,7 +11,7 @@ async function testLearningPipeline() {
   try {
     // Initialize components
     const database = new SQLiteDatabase('./test-learning.db');
-    const semanticEngine = new SemanticEngine(database);
+    const semanticEngine = new SemanticEngine();
     const patternEngine = new PatternEngine(database);
     const intelligenceTools = new IntelligenceTools(semanticEngine, patternEngine, database);
     

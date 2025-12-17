@@ -268,7 +268,7 @@ export class InteractiveSetup {
       const embeddingConfig = globalConfig.getEmbeddingConfig();
       vectorDB = createVectorStore(embeddingConfig);
       await vectorDB.verifyEmbeddingModel();
-      semanticEngine = new SemanticEngine(database, vectorDB);
+      semanticEngine = new SemanticEngine();
       patternEngine = new PatternEngine(database);
 
       // Setup progress tracking
@@ -288,7 +288,7 @@ export class InteractiveSetup {
 
       // Phase 1: Semantic learning
       tracker.startPhase("semantic_analysis");
-      const concepts = await semanticEngine.learnFromCodebase(
+      const concepts = await semanticEngine.extractSemanticConcepts(
         config.projectPath,
         (current, total, message) => {
           tracker.updateProgress("semantic_analysis", current, message);

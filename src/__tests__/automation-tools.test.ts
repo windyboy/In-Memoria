@@ -51,7 +51,7 @@ describe("AutomationTools", () => {
 
     database = new SQLiteDatabase(join(tempDir, "test.db"));
     vectorDB = new SemanticVectorDB(); // Uses default config
-    semanticEngine = new SemanticEngine(database, vectorDB);
+    semanticEngine = new SemanticEngine();
     patternEngine = new PatternEngine(database);
     automationTools = new AutomationTools(
       semanticEngine,

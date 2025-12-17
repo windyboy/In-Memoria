@@ -235,30 +235,13 @@ export class PatternEngine {
         examples: p.examples.map((ex: any) => ({ code: ex.code }))
       }));
 
-      // Store patterns in database with progress updates
-      const totalPatterns = result.length;
-      let storedPatterns = 0;
-      
-      for (const pattern of result) {
-        this.database.insertDeveloperPattern({
-          patternId: pattern.id,
-          patternType: pattern.type,
-          patternContent: pattern.content,
-          frequency: pattern.frequency,
-          contexts: pattern.contexts,
-          examples: pattern.examples,
-          confidence: pattern.confidence
-        });
-        
-        storedPatterns++;
-        // Report every 5 patterns or at completion
-        if (progressCallback && totalPatterns > 0 && (storedPatterns % 5 === 0 || storedPatterns === totalPatterns)) {
-          const progress = 90 + Math.floor((storedPatterns / totalPatterns) * 10);
-          progressCallback(progress, 100, `Stored ${storedPatterns}/${totalPatterns} patterns`);
-        }
+      // Pattern extraction complete - return results without storing
+      // Storage is now handled by LearningService (single writer principle)
+      if (progressCallback) {
+        progressCallback(100, 100, `Pattern extraction complete: ${result.length} patterns discovered`);
       }
-
-      console.log(`✅ Pattern learning completed: ${result.length} patterns discovered`);
+      
+      console.log(`✅ Pattern extraction completed: ${result.length} patterns discovered`);
       return result;
     } catch (error) {
       console.error('❌ Pattern learning failed:', error);
@@ -420,36 +403,8 @@ export class PatternEngine {
     try {
       await this.rustLearner.learnFromAnalysis(JSON.stringify(analysisData));
       
-      // Update local pattern database based on analysis
-      if (analysisData.patterns && analysisData.patterns.detected) {
-        for (const patternType of analysisData.patterns.detected) {
-          const existingPatterns = this.database.getDeveloperPatterns(patternType);
-          
-          if (existingPatterns.length > 0) {
-            // Increment frequency of detected pattern
-            const pattern = existingPatterns[0];
-            this.database.insertDeveloperPattern({
-              ...pattern,
-              frequency: pattern.frequency + 1,
-              confidence: Math.min(1.0, pattern.confidence + 0.05)
-            });
-          } else {
-            // Create new pattern entry
-            this.database.insertDeveloperPattern({
-              patternId: nanoid(),
-              patternType,
-              patternContent: { 
-                description: `Pattern detected in ${analysisData.change?.path || 'unknown file'}`,
-                detectedAt: new Date().toISOString()
-              },
-              frequency: 1,
-              contexts: [analysisData.change?.language || 'unknown'],
-              examples: [],
-              confidence: 0.3
-            });
-          }
-        }
-      }
+      // Note: Pattern storage is now handled by LearningService (single writer principle)
+      // This method now only performs the Rust analysis without database writes
     } catch (error) {
       console.error('Failed to learn from analysis:', error);
     }
@@ -467,8 +422,8 @@ export class PatternEngine {
 
       await this.rustLearner.updateFromChange(changeData);
       
-      // Update pattern usage statistics
-      await this.updatePatternUsageStats(change);
+      // Note: Pattern usage statistics updates are now handled by LearningService (single writer principle)
+      // This method now only performs the Rust analysis without database writes
     } catch (error) {
       console.error('Failed to update from change:', error);
     }
@@ -600,21 +555,13 @@ export class PatternEngine {
   }
 
   private async updatePatternUsageStats(change: FileChange): Promise<void> {
-    if (!change.content || !change.language) return;
-
-    // Track usage of different patterns based on file content (limit to 100 most common)
-    const patterns = this.database.getDeveloperPatterns(undefined, 100);
+    // This method is now deprecated - pattern usage statistics updates
+    // are handled by LearningService (single writer principle)
+    // Keeping method for backward compatibility but it no longer writes to database
+    console.warn('updatePatternUsageStats is deprecated - use LearningService for pattern updates');
     
-    for (const pattern of patterns) {
-      // Check if pattern is used in the changed file
-      if (this.isPatternUsedInContent(pattern, change.content, change.language)) {
-        // Update last seen time
-        this.database.insertDeveloperPattern({
-          ...pattern,
-          frequency: pattern.frequency + 1
-        });
-      }
-    }
+    // NO DATABASE WRITES - All write operations moved to LearningService
+    // This ensures single writer principle is maintained
   }
 
   private isPatternUsedInContent(

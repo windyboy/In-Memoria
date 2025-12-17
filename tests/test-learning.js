@@ -13,7 +13,7 @@ async function testLearning() {
     // Initialize components
     const database = new SQLiteDatabase('./test-cartographer.db');
     const vectorDB = new SemanticVectorDB();
-    const semanticEngine = new SemanticEngine(database, vectorDB);
+    const semanticEngine = new SemanticEngine();
     const patternEngine = new PatternEngine(database);
     const intelligenceTools = new IntelligenceTools(semanticEngine, patternEngine, database);
 

@@ -51,7 +51,7 @@ async function testTransparentDegradation() {
     try {
         const db = new SQLiteDatabase(':memory:');
         const vectorDB = new SemanticVectorDB();
-        const semanticEngine = new SemanticEngine(db, vectorDB);
+        const semanticEngine = new SemanticEngine();
 
         console.log('   Attempting semantic analysis (will use fallback)...');
         const analysis = await semanticEngine.analyzeCodebase('/nonexistent/path');
@@ -73,7 +73,7 @@ async function testTransparentDegradation() {
     try {
         const db = new SQLiteDatabase(':memory:');
         const vectorDB = new SemanticVectorDB();
-        const semanticEngine = new SemanticEngine(db, vectorDB);
+        const semanticEngine = new SemanticEngine();
 
         console.log('   Testing file analysis fallback...');
         const testCode = `

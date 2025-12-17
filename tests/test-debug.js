@@ -49,7 +49,7 @@ function validateUser(user: User): boolean {
     
     // Test directory learning
     console.log('\n📚 Testing directory learning...');
-    const learnedConcepts = await analyzer.learnFromCodebase(testDir);
+    const learnedConcepts = await analyzer.extractSemanticConcepts(testDir);
     console.log(`✅ Directory learning found ${learnedConcepts.length} concepts:`);
     learnedConcepts.forEach(concept => {
       console.log(`   - ${concept.name} (${concept.concept_type}) in ${concept.file_path}`);

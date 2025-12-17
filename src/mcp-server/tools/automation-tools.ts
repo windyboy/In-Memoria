@@ -249,7 +249,7 @@ export class AutomationTools {
 
         try {
           concepts = await Promise.race([
-            this.semanticEngine.learnFromCodebase(
+            this.semanticEngine.extractSemanticConcepts(
               projectPath,
               (current: number, total: number, message: string) => {
                 // Update progress tracker with real-time updates from semantic engine

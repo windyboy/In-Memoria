@@ -98,13 +98,21 @@ async function main() {
             break;
 
         case "learn":
-            const learnPath = args[1] || process.cwd();
-            await learnCodebase(learnPath);
+            const { handleLearnCommand, parseLearnArgs } = await import("./cli/learn.js");
+            const learnArgs = parseLearnArgs(args.slice(1));
+            await handleLearnCommand(learnArgs);
             break;
 
         case "analyze":
-            const analyzePath = args[1] || process.cwd();
-            await analyzeCodebase(analyzePath);
+            const { handleAnalyzeCommand, parseAnalyzeArgs } = await import("./cli/analyze.js");
+            const analyzeArgs = parseAnalyzeArgs(args.slice(1));
+            await handleAnalyzeCommand(analyzeArgs);
+            break;
+
+        case "status":
+            const { handleStatusCommand, parseStatusArgs } = await import("./cli/status.js");
+            const statusArgs = parseStatusArgs(args.slice(1));
+            await handleStatusCommand(statusArgs);
             break;
 
         case "init":
@@ -156,7 +164,7 @@ async function startWatcher(path: string): Promise<void> {
     const backendInfo = vectorDB.getBackendInfo();
     console.log(`🔧 Using vector backend: ${backendInfo.type} v${backendInfo.version}`);
     
-    const semanticEngine = new SemanticEngine(database, vectorDB);
+    const semanticEngine = new SemanticEngine();
     const patternEngine = new PatternEngine(database);
     const analyzer = new ChangeAnalyzer(
         semanticEngine,
@@ -212,179 +220,9 @@ async function startWatcher(path: string): Promise<void> {
     });
 }
 
-async function learnCodebase(path: string): Promise<void> {
-    console.log(`🧠 Starting intelligent learning from: ${path}\n`);
 
-    try {
-        // Estimate file count for summary
-        const glob = (await import("glob")).glob;
-        const files = await glob(
-            "**/*.{ts,tsx,js,jsx,py,rs,go,java,c,cpp,svelte,vue,php,phtml,inc}",
-            {
-                cwd: path,
-                ignore: [
-                    "**/node_modules/**",
-                    "**/dist/**",
-                    "**/build/**",
-                    "**/.git/**",
-                ],
-                nodir: true,
-            },
-        );
-        const fileCount = files.length;
 
-        // Use shared learning service
-        const { LearningService } =
-            await import("./services/learning-service.js");
-        const force = process.argv.includes("--force");
 
-        // Simple milestone-based progress tracking
-        let lastLoggedPercent = -1;
-        const result = await LearningService.learnFromCodebase(path, {
-            force,
-            progressCallback: (
-                current: number,
-                total: number,
-                message: string,
-            ) => {
-                // Log at 0%, 25%, 50%, 75%, 100% milestones only
-                const percent = Math.floor((current / total) * 100);
-                const milestone = Math.floor(percent / 25) * 25;
-
-                if (
-                    milestone !== lastLoggedPercent &&
-                    (milestone === 0 ||
-                        milestone === 25 ||
-                        milestone === 50 ||
-                        milestone === 75 ||
-                        milestone === 100)
-                ) {
-                    console.log(`   ${milestone}% - ${message}`);
-                    lastLoggedPercent = milestone;
-                }
-            },
-        });
-
-        // Print insights (including any errors)
-        if (result.insights && result.insights.length > 0) {
-            console.log("\n📝 Learning Details:");
-            result.insights.forEach((insight) => console.log(insight));
-            console.log("");
-        }
-
-        // Check if learning failed
-        if (!result.success) {
-            console.error("❌ Learning failed - see details above");
-            process.exit(1);
-        }
-
-        // Print summary
-        const separator = "━".repeat(60);
-        console.log(`${separator}`);
-        console.log(`📊 Concepts:  ${result.conceptsLearned}`);
-        console.log(`🔍 Patterns:  ${result.patternsLearned}`);
-        console.log(`🗺️  Features:  ${result.featuresLearned}`);
-        console.log(`📁 Files:     ${fileCount}`);
-        console.log(`${separator}\n`);
-    } catch (error) {
-        console.error(`❌ Learning failed: ${error}`);
-        // Let the function return normally - caller handles exit status
-    }
-}
-
-async function analyzeCodebase(path: string): Promise<void> {
-    console.log(`Analyzing codebase: ${path}`);
-
-    const database = new SQLiteDatabase(config.getDatabasePath(path));
-    const embeddingConfig = config.getEmbeddingConfig();
-    const vectorDB = createVectorStore(embeddingConfig);
-    
-    // Log backend information
-    const backendInfo = vectorDB.getBackendInfo();
-    console.log(`🔧 Using vector backend: ${backendInfo.type} v${backendInfo.version}`);
-    
-    const semanticEngine = new SemanticEngine(database, vectorDB);
-    const patternEngine = new PatternEngine(database);
-
-    try {
-        const analysis = await semanticEngine.analyzeCodebase(path);
-        const patterns = await patternEngine.extractPatterns(path);
-
-        // Also get stored intelligence from previous learning sessions
-        const storedConcepts = database.getSemanticConcepts();
-        const storedPatterns = database.getDeveloperPatterns();
-
-        console.log("\n=== Codebase Analysis Results ===");
-        console.log(`Languages: ${analysis.languages.join(", ")}`);
-        console.log(`Frameworks: ${analysis.frameworks.join(", ")}`);
-        console.log(`Fresh concepts found: ${analysis.concepts.length}`);
-        console.log(`Stored concepts available: ${storedConcepts.length}`);
-        console.log(`Fresh patterns found: ${patterns.length}`);
-        console.log(`Stored patterns available: ${storedPatterns.length}`);
-        const cyclomaticComplexity = analysis.complexity?.cyclomatic ?? 0;
-        const cognitiveComplexity = analysis.complexity?.cognitive ?? 0;
-        console.log(
-            `Complexity: Cyclomatic=${cyclomaticComplexity.toFixed(1)}, Cognitive=${cognitiveComplexity.toFixed(1)}`,
-        );
-
-        // Show fresh concepts from current analysis
-        if (analysis.concepts.length > 0) {
-            console.log("\nFresh Concepts (from current analysis):");
-            analysis.concepts.slice(0, 5).forEach((concept) => {
-                console.log(
-                    `  - ${concept.name} (${concept.type}) - confidence: ${(concept.confidence * 100).toFixed(1)}%`,
-                );
-            });
-        }
-
-        // Show some stored concepts from learning
-        if (storedConcepts.length > 0) {
-            console.log("\nStored Concepts (from learning):");
-            storedConcepts.slice(0, 5).forEach((concept) => {
-                console.log(
-                    `  - ${concept.conceptName} (${concept.conceptType}) - confidence: ${(concept.confidenceScore * 100).toFixed(1)}%`,
-                );
-            });
-        }
-
-        // Show fresh patterns
-        if (patterns.length > 0) {
-            console.log("\nFresh Patterns:");
-            patterns.slice(0, 5).forEach((pattern) => {
-                console.log(
-                    `  - ${pattern.type}: ${pattern.description} (frequency: ${pattern.frequency})`,
-                );
-            });
-        }
-
-        // Show stored patterns
-        if (storedPatterns.length > 0) {
-            console.log("\nStored Patterns (from learning):");
-            storedPatterns.slice(0, 5).forEach((pattern) => {
-                const description =
-                    pattern.patternContent?.description ||
-                    "Pattern learned from code";
-                console.log(
-                    `  - ${pattern.patternType}: ${description} (frequency: ${pattern.frequency})`,
-                );
-            });
-        }
-    } catch (error) {
-        console.error(`Analysis failed: ${error}`);
-    } finally {
-        // Clean up all resources to prevent hanging
-        try {
-            await vectorDB.close();
-        } catch (error) {
-            console.warn("Warning: Failed to close vector database:", error);
-        }
-
-        // Clean up semantic engine resources
-        semanticEngine.cleanup();
-
-        database.close();
-    }
-}
 
 async function initializeProject(path: string): Promise<void> {
     console.log(`Initializing In Memoria for project: ${path}`);
@@ -472,6 +310,7 @@ Core Commands:
 Development Commands:
   learn [path]              Analyze codebase and build semantic intelligence database
   analyze [path]            Show insights about codebase structure and patterns
+  status [path]             Show learning status and system health information
   watch [path]              Monitor file changes and update intelligence in real-time
 
 Utility Commands:

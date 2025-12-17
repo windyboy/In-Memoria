@@ -1,5 +1,6 @@
 import { SemanticEngine } from "./semantic-engine.js";
 import { PatternEngine } from "./pattern-engine.js";
+import { VectorStore } from "../storage/vector-store.js";
 import { readFileSync } from "fs";
 import { relative } from "path";
 import { glob } from "glob";
@@ -32,6 +33,7 @@ export class SearchEngine {
     constructor(
         private semanticEngine: SemanticEngine,
         private patternEngine: PatternEngine,
+        private vectorStore: VectorStore,
         private database: any,
     ) {}
 
@@ -61,19 +63,19 @@ export class SearchEngine {
 
     private async semanticSearch(query: SearchQuery): Promise<SearchResponse> {
         try {
-            // Get the vector database from semantic engine
-            const vectorResults =
-                await this.semanticEngine.searchSemanticallySimilar(
-                    query.query,
-                    query.limit || 10,
-                );
+            // Use vector store directly for semantic search
+            await this.vectorStore.initialize('in-memoria-intelligence');
+            const vectorResults = await this.vectorStore.findSimilarCode(
+                query.query,
+                query.limit || 10,
+            );
 
             const results: SearchResult[] = [];
 
             for (const result of vectorResults) {
                 try {
                     // Read the file content for context
-                    const content = readFileSync(result.filePath, "utf-8");
+                    const content = readFileSync(result.metadata.filePath, "utf-8");
                     const lines = content.split("\n");
 
                     // Get context around the match (simple approach)
@@ -83,15 +85,19 @@ export class SearchEngine {
                         .slice(contextStart, contextEnd)
                         .join("\n");
 
+                    const conceptName = result.metadata.functionName || 
+                                      result.metadata.className || 
+                                      'unknown';
+
                     results.push({
-                        file: result.filePath,
-                        content: result.concept,
+                        file: result.metadata.filePath,
+                        content: conceptName,
                         score: result.similarity,
                         context:
                             context.substring(0, 200) +
                             (context.length > 200 ? "..." : ""),
                         metadata: {
-                            concept: result.concept,
+                            concept: conceptName,
                             similarity: result.similarity,
                             type: "semantic",
                         },

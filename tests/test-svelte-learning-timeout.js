@@ -280,14 +280,14 @@ async function testSvelteLearning() {
         // Initialize components
         const database = new SQLiteDatabase(':memory:');
         const vectorDB = new SemanticVectorDB(':memory:');
-        const semanticEngine = new SemanticEngine(database, vectorDB);
+        const semanticEngine = new SemanticEngine();
         const patternEngine = new PatternEngine(database);
         
         console.log('🚀 Starting semantic learning...');
         const startTime = Date.now();
         
         // Test semantic learning with timeout
-        const concepts = await semanticEngine.learnFromCodebase(testDir);
+        const concepts = await semanticEngine.extractSemanticConcepts(testDir);
         
         const endTime = Date.now();
         const duration = endTime - startTime;

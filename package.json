@@ -40,7 +40,8 @@
         "start": "node dist/index.js server",
         "prepublishOnly": "npm run build",
         "postinstall": "npm rebuild better-sqlite3 || echo 'Note: better-sqlite3 rebuild failed, but this might still work'",
-        "debug": "npx @modelcontextprotocol/inspector node dist/index.js server"
+        "debug": "npx @modelcontextprotocol/inspector node dist/index.js server",
+        "migrate-db": "tsx src/storage/migrate-to-simplified.ts"
     },
     "keywords": [
         "mcp",

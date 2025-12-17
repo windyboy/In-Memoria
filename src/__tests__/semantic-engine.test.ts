@@ -16,7 +16,7 @@ describe('SemanticEngine', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'in-memoria-test-'));
     database = new SQLiteDatabase(join(tempDir, 'test.db'));
     vectorDB = new SemanticVectorDB(); // No API key for tests, uses default config
-    semanticEngine = new SemanticEngine(database, vectorDB);
+    semanticEngine = new SemanticEngine();
   });
 
   afterEach(() => {

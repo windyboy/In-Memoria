@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, vi, Mocked } from "vitest";
 import { SearchEngine } from "../engines/search-engine.js";
 import { SemanticEngine } from "../engines/semantic-engine.js";
 import { PatternEngine } from "../engines/pattern-engine.js";
+import { VectorStore } from "../storage/vector-store.js";
 
 // Mock dependencies
 vi.mock("../engines/semantic-engine.js");
 vi.mock("../engines/pattern-engine.js");
+vi.mock("../storage/vector-store.js");
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
 }));
@@ -20,19 +22,61 @@ describe("SearchEngine", () => {
   let searchEngine: SearchEngine;
   let mockSemanticEngine: Mocked<SemanticEngine>;
   let mockPatternEngine: Mocked<PatternEngine>;
+  let mockVectorStore: Mocked<VectorStore>;
   let mockDatabase: any;
 
   beforeEach(() => {
-    mockSemanticEngine = new SemanticEngine(
-      {} as any,
-      {} as any,
-    ) as Mocked<SemanticEngine>;
+    mockSemanticEngine = new SemanticEngine() as Mocked<SemanticEngine>;
     mockPatternEngine = new PatternEngine({} as any) as Mocked<PatternEngine>;
+    
+    // Create a mock VectorStore object since it's an interface
+    mockVectorStore = {
+      initialize: vi.fn().mockResolvedValue(undefined),
+      verifyEmbeddingModel: vi.fn().mockResolvedValue(undefined),
+      storeCodeEmbedding: vi.fn().mockResolvedValue(undefined),
+      storeMultipleEmbeddings: vi.fn().mockResolvedValue(undefined),
+      findSimilarCode: vi.fn().mockResolvedValue([]),
+      findSimilarCodeByFile: vi.fn().mockResolvedValue([]),
+      findSimilarCodeByLanguage: vi.fn().mockResolvedValue([]),
+      updateCodeEmbedding: vi.fn().mockResolvedValue(undefined),
+      deleteCodeEmbedding: vi.fn().mockResolvedValue(undefined),
+      deleteCodeEmbeddingsByFile: vi.fn().mockResolvedValue(undefined),
+      getCollectionStats: vi.fn().mockResolvedValue({ count: 0, metadata: {} }),
+      close: vi.fn().mockResolvedValue(undefined),
+      getBackendInfo: vi.fn().mockReturnValue({
+        type: 'mock',
+        version: '1.0.0',
+        capabilities: {
+          supportsBatchOperations: true,
+          supportsFiltering: true,
+          supportsMetadataSearch: true,
+          maxEmbeddingDimension: 1536,
+          supportedDistanceMetrics: ['cosine']
+        },
+        connectionStatus: 'connected' as const,
+        metadata: {}
+      }),
+      getHealthStatus: vi.fn().mockResolvedValue({
+        status: 'healthy' as const,
+        lastChecked: new Date(),
+        responseTime: 10,
+        details: {}
+      }),
+      getPerformanceMetrics: vi.fn().mockResolvedValue({
+        operationCounts: { total: 0 },
+        averageResponseTimes: { overall: 0 },
+        errorRates: { overall: 0 },
+        cacheHitRates: { overall: 0 },
+        memoryUsage: 0
+      })
+    } as Mocked<VectorStore>;
+    
     mockDatabase = {};
 
     searchEngine = new SearchEngine(
       mockSemanticEngine,
       mockPatternEngine,
+      mockVectorStore,
       mockDatabase,
     );
   });
@@ -156,11 +200,15 @@ describe("SearchEngine", () => {
   describe("semanticSearch", () => {
     it("should return results from semantic engine", async () => {
       const mockVectorResults = [
-        { filePath: "file1.ts", concept: "concept1", similarity: 0.9 },
+        { 
+          similarity: 0.9,
+          metadata: { 
+            filePath: "file1.ts", 
+            functionName: "testFunction" 
+          }
+        },
       ];
-      mockSemanticEngine.searchSemanticallySimilar.mockResolvedValue(
-        mockVectorResults,
-      );
+      mockVectorStore.findSimilarCode.mockResolvedValue(mockVectorResults);
 
       const { readFileSync } = await import("fs");
       (readFileSync as any).mockReturnValue("content");
@@ -170,7 +218,7 @@ describe("SearchEngine", () => {
         limit: 10,
       });
 
-      expect(mockSemanticEngine.searchSemanticallySimilar).toHaveBeenCalledWith(
+      expect(mockVectorStore.findSimilarCode).toHaveBeenCalledWith(
         "test",
         10,
       );
@@ -179,7 +227,7 @@ describe("SearchEngine", () => {
     });
 
     it("should handle errors gracefully", async () => {
-      mockSemanticEngine.searchSemanticallySimilar.mockRejectedValue(
+      mockVectorStore.findSimilarCode.mockRejectedValue(
         new Error("Test error"),
       );
 
