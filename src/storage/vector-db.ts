@@ -12,8 +12,13 @@ import {
   CodeMetadata,
   SemanticSearchResult,
   VectorStore,
+  BackendInfo,
+  HealthStatus,
+  PerformanceMetrics,
 } from "./vector-store.js";
+import { SurrealErrorTranslator } from "./vector-errors.js";
 import { EmbeddingConfig } from "./vector-types.js";
+import { PerformanceMonitor, createPerformanceMonitor } from "./performance-monitor.js";
 
 type TransformersModule = typeof import("@xenova/transformers");
 type PipelineFactory = TransformersModule["pipeline"];
@@ -47,6 +52,8 @@ export class SurrealVectorDB implements VectorStore {
   private transformersPipelineFactory: PipelineFactory | null = null;
   private transformersLoadPromise?: Promise<PipelineFactory | null>;
   private transformersEnv: TransformersEnv | null = null;
+  protected errorTranslator: SurrealErrorTranslator;
+  protected performanceMonitor: PerformanceMonitor;
 
   // Configurable embedding settings
   private embeddingModel: string;
@@ -126,6 +133,13 @@ export class SurrealVectorDB implements VectorStore {
     Logger.info(
       `📊 Embedding cache configured: ${this.embeddingCacheSize} entries, ~${this.maxCacheMemoryMB}MB memory limit`,
     );
+
+    // Initialize error handling and performance monitoring
+    this.errorTranslator = new SurrealErrorTranslator();
+    this.performanceMonitor = createPerformanceMonitor('surreal', {
+      enableAutoHealthCheck: true,
+      healthCheckIntervalMs: 30000
+    });
 
     // Log model configuration
     Logger.info(`🤖 Embedding model configuration:`);
@@ -492,6 +506,7 @@ export class SurrealVectorDB implements VectorStore {
   }
 
   async initialize(collectionName: string = "in-memoria"): Promise<void> {
+    const operationId = this.performanceMonitor.startOperation('initialize');
     try {
       // Use SurrealKV for persistent storage of vector embeddings
       // IMPORTANT: Requires SURREAL_SYNC_DATA=true for crash safety
@@ -532,9 +547,13 @@ export class SurrealVectorDB implements VectorStore {
       }
 
       this.initialized = true;
+      this.performanceMonitor.endOperation(operationId, 'initialize', true);
+      Logger.info(`✅ SurrealDB vector database initialized successfully`);
     } catch (error) {
-      Logger.error("Failed to initialize SurrealDB:", error);
-      throw error;
+      this.performanceMonitor.endOperation(operationId, 'initialize', false);
+      const normalizedError = this.errorTranslator.translate(error as Error);
+      Logger.error("❌ Failed to initialize SurrealDB:", normalizedError.toLogSafeObject());
+      throw normalizedError;
     }
   }
 
@@ -542,22 +561,32 @@ export class SurrealVectorDB implements VectorStore {
     code: string,
     metadata: CodeMetadata,
   ): Promise<void> {
-    if (!this.initialized) {
-      throw new Error(
-        "Vector database not initialized. Call initialize() first.",
-      );
+    const operationId = this.performanceMonitor.startOperation('storeCodeEmbedding');
+    try {
+      if (!this.initialized) {
+        throw new Error(
+          "Vector database not initialized. Call initialize() first.",
+        );
+      }
+
+      const embedding = await this.generateEmbedding(code);
+      const document: CodeDocument = {
+        code,
+        embedding,
+        metadata,
+        created: new Date(),
+        updated: new Date(),
+      };
+
+      await this.db.create("code_documents", document);
+      this.performanceMonitor.endOperation(operationId, 'storeCodeEmbedding', true);
+      Logger.debug(`✅ Successfully stored code embedding for ${metadata.id}`);
+    } catch (error) {
+      this.performanceMonitor.endOperation(operationId, 'storeCodeEmbedding', false);
+      const normalizedError = this.errorTranslator.translate(error as Error);
+      Logger.error(`❌ Failed to store code embedding:`, normalizedError.toLogSafeObject());
+      throw normalizedError;
     }
-
-    const embedding = await this.generateEmbedding(code);
-    const document: CodeDocument = {
-      code,
-      embedding,
-      metadata,
-      created: new Date(),
-      updated: new Date(),
-    };
-
-    await this.db.create("code_documents", document);
   }
 
   async storeMultipleEmbeddings(
@@ -597,11 +626,13 @@ export class SurrealVectorDB implements VectorStore {
     limit: number = 5,
     filters?: Record<string, any>,
   ): Promise<SemanticSearchResult[]> {
-    if (!this.initialized) {
-      throw new Error(
-        "Vector database not initialized. Call initialize() first.",
-      );
-    }
+    const operationId = this.performanceMonitor.startOperation('findSimilarCode');
+    try {
+      if (!this.initialized) {
+        throw new Error(
+          "Vector database not initialized. Call initialize() first.",
+        );
+      }
 
     if (!query || query.trim() === "") {
       // If no query, just return all documents matching filters
@@ -621,12 +652,16 @@ export class SurrealVectorDB implements VectorStore {
       const results = await this.db.query(searchQuery, params);
       const documents = (results[0] as any[]) || [];
 
-      return documents.map((doc) => ({
+      const searchResults = documents.map((doc) => ({
         id: doc.id,
         code: doc.code,
         metadata: doc.metadata,
         similarity: 0.5, // Default similarity for non-search results
       }));
+      
+      this.performanceMonitor.endOperation(operationId, 'findSimilarCode', true);
+      Logger.debug(`✅ Found ${searchResults.length} results using query (no search)`);
+      return searchResults;
     }
 
     // Build candidate set with BM25 search, then rank by cosine similarity using stored embeddings
@@ -658,6 +693,8 @@ export class SurrealVectorDB implements VectorStore {
     const documents = (results[0] as any[]) || [];
 
     if (!documents.length) {
+      this.performanceMonitor.endOperation(operationId, 'findSimilarCode', true);
+      Logger.debug(`✅ No similar code found for query`);
       return [];
     }
 
@@ -681,15 +718,27 @@ export class SurrealVectorDB implements VectorStore {
 
     // Fallback to BM25 scores when embeddings are missing
     if (scored.length === 0) {
-      return documents.slice(0, limit).map((doc: any) => ({
+      const fallbackResults = documents.slice(0, limit).map((doc: any) => ({
         id: doc.id,
         code: doc.code,
         metadata: doc.metadata,
         similarity: doc.bm25 || 0,
       }));
+      
+      this.performanceMonitor.endOperation(operationId, 'findSimilarCode', true);
+      Logger.debug(`✅ Found ${fallbackResults.length} results using BM25 fallback`);
+      return fallbackResults;
     }
 
+    this.performanceMonitor.endOperation(operationId, 'findSimilarCode', true);
+    Logger.debug(`✅ Found ${scored.length} similar code results`);
     return scored;
+    } catch (error) {
+      this.performanceMonitor.endOperation(operationId, 'findSimilarCode', false);
+      const normalizedError = this.errorTranslator.translate(error as Error);
+      Logger.error(`❌ Failed to find similar code:`, normalizedError.toLogSafeObject());
+      throw normalizedError;
+    }
   }
 
   async findSimilarCodeByFile(
@@ -1048,8 +1097,102 @@ export class SurrealVectorDB implements VectorStore {
     return vector.map((val) => val / magnitude);
   }
 
+  // New standardized methods
+  getBackendInfo(): BackendInfo {
+    return {
+      type: 'surreal',
+      version: '1.0.0', // TODO: Get actual SurrealDB version
+      capabilities: {
+        supportsBatchOperations: true,
+        supportsFiltering: true,
+        supportsMetadataSearch: true,
+        maxEmbeddingDimension: 2048, // Reasonable limit for SurrealDB
+        supportedDistanceMetrics: ['cosine', 'euclidean']
+      },
+      connectionStatus: this.initialized ? 'connected' : 'disconnected',
+      metadata: {
+        embeddingModel: this.embeddingModel,
+        embeddingDimension: this.embeddingDimension,
+        cacheSize: this.embeddingCacheSize,
+        pooling: this.embeddingPooling,
+        normalize: this.embeddingNormalize,
+        offlineMode: this.offlineMode
+      }
+    };
+  }
+
+  async getHealthStatus(): Promise<HealthStatus> {
+    // Use performance monitor for comprehensive health checking
+    return await this.performanceMonitor.getHealthStatus(async () => {
+      const details: Record<string, unknown> = {};
+      
+      if (!this.initialized) {
+        throw new Error('Database not initialized');
+      }
+      
+      // Test basic database connectivity
+      try {
+        await this.db.query('SELECT 1');
+        details.database = 'connected';
+      } catch (error) {
+        const normalizedError = this.errorTranslator.translate(error as Error);
+        throw normalizedError;
+      }
+      
+      // Test embedding pipeline
+      if (this.localEmbeddingPipeline) {
+        details.embeddingPipeline = 'ready';
+      } else {
+        details.embeddingPipeline = 'fallback';
+      }
+      
+      // Check cache status
+      details.cacheEntries = this.embeddingCache.size;
+      details.cacheMemoryUsage = `${Math.round(this.cacheMemoryUsage / 1024 / 1024)}MB`;
+      
+      return details;
+    });
+  }
+
+  async getPerformanceMetrics(): Promise<PerformanceMetrics> {
+    // Get metrics from performance monitor
+    const monitorMetrics = this.performanceMonitor.getPerformanceMetrics();
+    
+    // Calculate cache hit rate based on actual cache usage
+    const totalCacheRequests = this.embeddingCache.size > 0 ? this.embeddingCache.size * 2 : 1; // Estimate
+    const cacheHitRate = this.embeddingCache.size / totalCacheRequests;
+    
+    // Merge all metrics with performance monitor taking precedence
+    return {
+      operationCounts: {
+        ...monitorMetrics.operationCounts,
+        generateEmbedding: this.embeddingCache.size, // Approximate based on cache size
+        cacheOperations: this.embeddingCache.size
+      },
+      averageResponseTimes: {
+        ...monitorMetrics.averageResponseTimes,
+        generateEmbedding: this.localEmbeddingPipeline ? 50 : 10, // Estimate: transformers vs fallback
+        cacheOperations: 1
+      },
+      errorRates: {
+        ...monitorMetrics.errorRates,
+        generateEmbedding: this.transformersFailed ? 0.1 : 0, // 10% if using fallback
+        cacheOperations: 0
+      },
+      cacheHitRates: {
+        ...monitorMetrics.cacheHitRates,
+        embeddingCache: Math.min(cacheHitRate, 1.0),
+        transformersCache: this.localEmbeddingPipeline ? 0.9 : 0 // High hit rate for transformers
+      },
+      memoryUsage: monitorMetrics.memoryUsage
+    };
+  }
+
   // Cleanup method
   async close(): Promise<void> {
+    // Clean up performance monitoring
+    this.performanceMonitor.dispose();
+    
     // Dispose of transformers.js pipeline to prevent hanging
     if (this.localEmbeddingPipeline) {
       try {

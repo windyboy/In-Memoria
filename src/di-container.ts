@@ -5,7 +5,13 @@ import { Logger } from "./utils/logger.js";
 import { PathValidator } from "./utils/path-validator.js";
 import { config } from "./config/config.js";
 import { VectorStore } from "./storage/vector-store.js";
-import { createVectorStore } from "./storage/vector-factory.js";
+import { 
+  createVectorStore, 
+  createEnhancedVectorStore
+} from "./storage/vector-factory.js";
+import { getBackendRegistry } from "./storage/backend-registry.js";
+import { CircuitBreaker, createRustAnalyzerCircuitBreaker } from "./utils/circuit-breaker.js";
+import { BackendConfig } from "./storage/backend-config.js";
 
 /**
  * Dependency Injection Container
@@ -80,16 +86,34 @@ export const ServiceKeys = {
     SEMANTIC_ENGINE: "semanticEngine",
     PATTERN_ENGINE: "patternEngine",
     VECTOR_STORE: "vectorStore",
+    BACKEND_REGISTRY: "backendRegistry",
+    VECTOR_CIRCUIT_BREAKER: "vectorCircuitBreaker",
     LOGGER: "logger",
     PATH_VALIDATOR: "pathValidator",
     CIRCUIT_BREAKER: "circuitBreaker",
 } as const;
 
 /**
+ * Configuration options for DI container initialization
+ */
+export interface DIContainerConfig {
+  projectPath?: string;
+  vectorBackendType?: string;
+  vectorBackendConfig?: Partial<BackendConfig>;
+  enableCircuitBreaker?: boolean;
+}
+
+/**
  * Initialize the DI container with default services
  */
-export function initializeDIContainer(projectPath?: string): DIContainer {
+export function initializeDIContainer(options: DIContainerConfig = {}): DIContainer {
     const container = DIContainer.getInstance();
+    const { 
+      projectPath, 
+      vectorBackendType, 
+      vectorBackendConfig, 
+      enableCircuitBreaker = true 
+    } = options;
 
     // Register core services
     container.registerFactory(ServiceKeys.DATABASE, () => {
@@ -99,11 +123,54 @@ export function initializeDIContainer(projectPath?: string): DIContainer {
         return new SQLiteDatabase(dbPath);
     });
 
+    // Register backend registry
+    container.registerFactory(ServiceKeys.BACKEND_REGISTRY, () => {
+        return getBackendRegistry();
+    });
+
+    // Register vector circuit breaker
+    container.registerFactory(ServiceKeys.VECTOR_CIRCUIT_BREAKER, () => {
+        return createRustAnalyzerCircuitBreaker();
+    });
+
+    // Register vector store with enhanced configuration and circuit breaker support
+    container.registerFactory(ServiceKeys.VECTOR_STORE, () => {
+        if (vectorBackendType && vectorBackendConfig) {
+            // Use enhanced creation with specific backend type and config
+            const circuitBreaker = enableCircuitBreaker 
+              ? container.get<CircuitBreaker>(ServiceKeys.VECTOR_CIRCUIT_BREAKER)
+              : undefined;
+            
+            Logger.info(`🔧 Creating vector store via DI container: ${vectorBackendType}`);
+            const vectorStore = createEnhancedVectorStore(vectorBackendType, vectorBackendConfig, circuitBreaker);
+            
+            // Log backend information for diagnostics
+            const backendInfo = vectorStore.getBackendInfo();
+            Logger.info(`   Backend: ${backendInfo.type} v${backendInfo.version}`);
+            Logger.info(`   Status: ${backendInfo.connectionStatus}`);
+            
+            return vectorStore;
+        } else {
+            // Use legacy creation method for backward compatibility
+            const circuitBreaker = enableCircuitBreaker 
+              ? container.get<CircuitBreaker>(ServiceKeys.VECTOR_CIRCUIT_BREAKER)
+              : undefined;
+            
+            Logger.info(`🔧 Creating vector store via DI container: legacy mode`);
+            const vectorStore = createVectorStore(undefined, circuitBreaker);
+            
+            // Log backend information for diagnostics
+            const backendInfo = vectorStore.getBackendInfo();
+            Logger.info(`   Backend: ${backendInfo.type} v${backendInfo.version}`);
+            Logger.info(`   Status: ${backendInfo.connectionStatus}`);
+            
+            return vectorStore;
+        }
+    });
+
     container.registerFactory(ServiceKeys.SEMANTIC_ENGINE, () => {
         const database = container.get<SQLiteDatabase>(ServiceKeys.DATABASE);
-        const vectorStore = container.get<VectorStore>(
-            ServiceKeys.VECTOR_STORE,
-        );
+        const vectorStore = container.get<VectorStore>(ServiceKeys.VECTOR_STORE);
         return new SemanticEngine(database, vectorStore);
     });
 
@@ -111,10 +178,6 @@ export function initializeDIContainer(projectPath?: string): DIContainer {
         const database = container.get<SQLiteDatabase>(ServiceKeys.DATABASE);
         return new PatternEngine(database);
     });
-
-    container.registerFactory(ServiceKeys.VECTOR_STORE, () =>
-        createVectorStore(),
-    );
 
     container.register(ServiceKeys.LOGGER, Logger);
 
@@ -127,6 +190,40 @@ export function initializeDIContainer(projectPath?: string): DIContainer {
     });
 
     return container;
+}
+
+/**
+ * Enhanced initialization with backend-specific configuration
+ */
+export function initializeEnhancedDIContainer(
+  projectPath: string,
+  backendType: string,
+  backendConfig: Partial<BackendConfig>
+): DIContainer {
+  return initializeDIContainer({
+    projectPath,
+    vectorBackendType: backendType,
+    vectorBackendConfig: backendConfig,
+    enableCircuitBreaker: true
+  });
+}
+
+/**
+ * Get or create a vector store with specific configuration
+ */
+export function getOrCreateVectorStore(
+  container: DIContainer,
+  backendType?: string,
+  config?: Partial<BackendConfig>
+): VectorStore {
+  if (backendType && config) {
+    // Create a new instance with specific configuration
+    const circuitBreaker = container.get<CircuitBreaker>(ServiceKeys.VECTOR_CIRCUIT_BREAKER);
+    return createEnhancedVectorStore(backendType, config, circuitBreaker);
+  }
+  
+  // Use the registered factory
+  return container.get<VectorStore>(ServiceKeys.VECTOR_STORE);
 }
 
 // Import here to avoid circular dependencies

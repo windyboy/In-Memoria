@@ -267,6 +267,45 @@ export class DebugTools {
           results.suggestions.push("Run learning to identify coding patterns");
         }
 
+        // Check backend information and health
+        try {
+          const backendInfo = vectorDB.getBackendInfo();
+          console.log(`  🔧 Vector backend: ${backendInfo.type} v${backendInfo.version}`);
+          console.log(`  📊 Connection status: ${backendInfo.connectionStatus}`);
+          
+          if (backendInfo.capabilities) {
+            console.log(`  ⚡ Batch operations: ${backendInfo.capabilities.supportsBatchOperations ? 'Yes' : 'No'}`);
+            console.log(`  🔍 Filtering support: ${backendInfo.capabilities.supportsFiltering ? 'Yes' : 'No'}`);
+            console.log(`  📏 Max embedding dimension: ${backendInfo.capabilities.maxEmbeddingDimension}`);
+          }
+          
+          // Perform health check
+          const healthStatus = await vectorDB.getHealthStatus();
+          console.log(`  💚 Health status: ${healthStatus.status}`);
+          console.log(`  ⏱️  Response time: ${healthStatus.responseTime}ms`);
+          
+          if (healthStatus.status === 'healthy') {
+            results.passed++;
+          } else if (healthStatus.status === 'degraded') {
+            console.log("  ⚠️  Vector store is in degraded state");
+            results.warnings++;
+          } else {
+            console.log("  ❌ Vector store is unhealthy");
+            results.errors++;
+          }
+          
+          // Get performance metrics
+          const metrics = await vectorDB.getPerformanceMetrics();
+          console.log(`  📈 Total operations: ${metrics.operationCounts.total || 0}`);
+          console.log(`  ⚡ Average response time: ${metrics.averageResponseTimes.overall || 0}ms`);
+          console.log(`  💾 Memory usage: ${Math.round((metrics.memoryUsage || 0) / 1024 / 1024)}MB`);
+          
+          results.passed++;
+        } catch (error) {
+          console.log(`  ⚠️  Could not get backend diagnostics: ${error instanceof Error ? error.message : String(error)}`);
+          results.warnings++;
+        }
+
         // Check OpenAI integration
         if (process.env.OPENAI_API_KEY) {
           console.log("  🔑 OpenAI API key detected");
@@ -287,6 +326,12 @@ export class DebugTools {
         results.errors++;
       }
 
+      // Clean up resources
+      try {
+        await vectorDB.close();
+      } catch (error) {
+        console.log(`  ⚠️  Warning: Failed to close vector database: ${error instanceof Error ? error.message : String(error)}`);
+      }
       database.close();
     } catch (error: unknown) {
       console.log(

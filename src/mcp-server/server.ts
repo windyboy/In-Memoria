@@ -167,8 +167,13 @@ export class CodeCartographerMCP {
             try {
                 await vectorDBCircuitBreaker.execute(
                     async () => {
-                        this.vectorDB = createVectorStore(embeddingConfig);
+                        this.vectorDB = createVectorStore(embeddingConfig, vectorDBCircuitBreaker);
                         await this.vectorDB.initialize();
+                        
+                        // Log backend information for diagnostics
+                        const backendInfo = this.vectorDB.getBackendInfo();
+                        Logger.info(`Vector backend: ${backendInfo.type} v${backendInfo.version}`);
+                        Logger.info(`Backend capabilities: ${JSON.stringify(backendInfo.capabilities)}`);
                     },
                     async () => {
                         Logger.warn(
@@ -179,6 +184,10 @@ export class CodeCartographerMCP {
                             embeddingConfig,
                         );
                         await this.vectorDB.initialize();
+                        
+                        // Log fallback backend information
+                        const backendInfo = this.vectorDB.getBackendInfo();
+                        Logger.info(`Fallback backend: ${backendInfo.type} v${backendInfo.version}`);
                     },
                 );
                 Logger.info("Vector database initialized successfully");
@@ -227,6 +236,18 @@ export class CodeCartographerMCP {
 
             // Initialize tool registry for efficient routing
             this.initializeToolRegistry();
+
+            // Perform initial health check
+            try {
+                const healthStatus = await this.vectorDB.getHealthStatus();
+                Logger.info(`Vector store health: ${healthStatus.status} (${healthStatus.responseTime}ms)`);
+                
+                if (healthStatus.status === 'unhealthy') {
+                    Logger.warn("Vector store is unhealthy but continuing initialization");
+                }
+            } catch (error) {
+                Logger.warn("Could not perform initial health check:", error);
+            }
 
             Logger.info("In Memoria components initialized successfully");
         } catch (error: unknown) {

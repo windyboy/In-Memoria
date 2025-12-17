@@ -46,7 +46,25 @@ export class LearningService {
     const projectDatabase = new SQLiteDatabase(projectDbPath);
     const embeddingConfig = config.getEmbeddingConfig();
     const projectVectorDB = createVectorStore(embeddingConfig);
+    
+    // Log backend information for diagnostics
+    const backendInfo = projectVectorDB.getBackendInfo();
+    insights.push(`🔧 Using vector backend: ${backendInfo.type} v${backendInfo.version}`);
+    
     await projectVectorDB.verifyEmbeddingModel();
+    
+    // Perform initial health check
+    try {
+      const healthStatus = await projectVectorDB.getHealthStatus();
+      insights.push(`💚 Backend health: ${healthStatus.status} (${healthStatus.responseTime}ms)`);
+      
+      if (healthStatus.status === 'unhealthy') {
+        insights.push(`⚠️  Warning: Backend is unhealthy but continuing`);
+      }
+    } catch (error) {
+      insights.push(`⚠️  Could not check backend health: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    
     const projectSemanticEngine = new SemanticEngine(
       projectDatabase,
       projectVectorDB,
@@ -259,6 +277,18 @@ export class LearningService {
 
       const timeElapsed = Date.now() - startTime;
       insights.push(`⚡ Learning completed in ${timeElapsed}ms`);
+
+      // Get final performance metrics
+      try {
+        const finalMetrics = await projectVectorDB.getPerformanceMetrics();
+        insights.push(`📊 Final metrics: ${finalMetrics.operationCounts.total || 0} operations, ${Math.round((finalMetrics.memoryUsage || 0) / 1024 / 1024)}MB memory`);
+        
+        if (finalMetrics.errorRates.overall > 0.1) {
+          insights.push(`⚠️  High error rate detected: ${(finalMetrics.errorRates.overall * 100).toFixed(1)}%`);
+        }
+      } catch (error) {
+        insights.push(`⚠️  Could not retrieve final performance metrics`);
+      }
 
       // Build blueprint summary
       const blueprint = {

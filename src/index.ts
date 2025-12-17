@@ -151,6 +151,11 @@ async function startWatcher(path: string): Promise<void> {
     const database = new SQLiteDatabase(config.getDatabasePath(path));
     const embeddingConfig = config.getEmbeddingConfig();
     const vectorDB = createVectorStore(embeddingConfig);
+    
+    // Log backend information
+    const backendInfo = vectorDB.getBackendInfo();
+    console.log(`🔧 Using vector backend: ${backendInfo.type} v${backendInfo.version}`);
+    
     const semanticEngine = new SemanticEngine(database, vectorDB);
     const patternEngine = new PatternEngine(database);
     const analyzer = new ChangeAnalyzer(
@@ -293,6 +298,11 @@ async function analyzeCodebase(path: string): Promise<void> {
     const database = new SQLiteDatabase(config.getDatabasePath(path));
     const embeddingConfig = config.getEmbeddingConfig();
     const vectorDB = createVectorStore(embeddingConfig);
+    
+    // Log backend information
+    const backendInfo = vectorDB.getBackendInfo();
+    console.log(`🔧 Using vector backend: ${backendInfo.type} v${backendInfo.version}`);
+    
     const semanticEngine = new SemanticEngine(database, vectorDB);
     const patternEngine = new PatternEngine(database);
 
