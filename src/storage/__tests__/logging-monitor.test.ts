@@ -3,8 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { LoggingMonitor, createLoggingMonitor } from '../logging-monitor.js';
-import { PerformanceMonitor } from '../performance-monitor.js';
+import { LoggingMonitor, createLoggingMonitor, PerformanceMonitor } from '../diagnostics.js';
 import { CircuitBreaker } from '../../utils/circuit-breaker.js';
 import { OperationError } from '../vector-errors.js';
 
@@ -175,7 +174,8 @@ describe('LoggingMonitor', () => {
       loggingMonitor.logOperation('op1', false, 100, new Error('Test'));
       loggingMonitor.logOperation('op3', true, 100);
 
-      const op1Entries = loggingMonitor.getLogEntriesByOperation('op1');
+      const allEntries = loggingMonitor.getRecentLogEntries();
+      const op1Entries = allEntries.filter(e => e.operation === 'op1');
       expect(op1Entries).toHaveLength(2);
       expect(op1Entries.every(e => e.operation === 'op1')).toBe(true);
     });
@@ -197,12 +197,11 @@ describe('LoggingMonitor', () => {
       loggingMonitor.logOperation('op2', false, 200, new Error('Test'));
       loggingMonitor.logOperation('op3', true, 150);
 
-      const metrics = loggingMonitor.getEnhancedPerformanceMetrics();
+      const diagnostics = loggingMonitor.getDiagnosticInfo();
       
-      expect(metrics.loggingStats.totalLogEntries).toBe(3);
-      expect(metrics.loggingStats.errorLogEntries).toBe(1);
-      expect(metrics.loggingStats.recentErrorRate).toBeCloseTo(1/3);
-      expect(metrics.loggingStats.averageOperationTime).toBeCloseTo(150);
+      expect(diagnostics.operationSummary.totalOperations).toBe(3);
+      expect(diagnostics.operationSummary.errorRate).toBeCloseTo(1/3);
+      expect(diagnostics.operationSummary.averageResponseTime).toBeCloseTo(150);
     });
   });
 

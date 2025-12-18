@@ -382,8 +382,7 @@ export class ErrorFactory {
       [
         { description: 'Check database file permissions' },
         { description: 'Ensure SQLite is available' },
-        { description: 'Try removing corrupted database file' },
-        { description: 'Run setup again', command: 'in-memoria setup --interactive' }
+        { description: 'Try removing corrupted database file' }
       ],
       originalError
     );
@@ -402,7 +401,6 @@ export class ErrorFactory {
       },
       [
         { description: 'Fix configuration file manually' },
-        { description: 'Run interactive setup', command: 'in-memoria setup --interactive' },
         { description: 'Reset to default configuration' }
       ]
     );
@@ -617,7 +615,7 @@ export class ErrorUtils {
       context,
       [
         { description: 'Check the error details above' },
-        { description: 'Try running with debug mode', command: 'in-memoria debug --verbose' }
+        { description: 'Review the logs for more details' }
       ],
        error
      );

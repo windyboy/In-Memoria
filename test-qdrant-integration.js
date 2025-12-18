@@ -163,7 +163,8 @@ test("Vector Storage and Retrieval", testVectorStorage);
 
 // Test 7: Learning service integration
 async function testLearningService() {
-    const { LearningService } = await import("./dist/services/learning-service.js");
+    // LearningService import updated - use new service through DI Container
+    const { initializeDIContainer } = await import("./dist/core/bootstrap.js");
 
     // Create a temporary test directory
     const testDir = `/tmp/in-memoria-test-${Date.now()}`;
@@ -172,7 +173,9 @@ async function testLearningService() {
     fs.writeFileSync(`${testDir}/test.js`, "console.log('test');");
 
     try {
-        const result = await LearningService.learnFromCodebase(testDir, { force: true });
+        // Use new LearningService through DI Container
+        const container = await initializeDIContainer({ projectPath: testDir });
+        const result = await container.learningService.learnFromCodebase(testDir, { force: true });
 
         if (!result.success) {
             throw new Error(`Learning failed: ${result.insights.join(', ')}`);

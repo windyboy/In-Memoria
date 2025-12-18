@@ -1,8 +1,9 @@
-import { SemanticEngine } from '../../engines/semantic-engine.js';
-import { PatternEngine, PatternExtractionResult } from '../../engines/pattern-engine.js';
+import { SemanticEngine } from '../../utils/semantic-engine.js';
+import { PatternEngine, PatternExtractionResult } from '../../utils/pattern-engine.js';
 import { SQLiteDatabase } from '../../storage/sqlite-db.js';
 import { Logger } from '../../utils/logger.js';
 import { PathValidator } from '../../utils/path-validator.js';
+import { LearningError, PathError, translateError } from '../errors.js';
 
 /**
  * Language metrics for a codebase
@@ -95,7 +96,11 @@ export class AnalysisService {
       Logger.info(`Starting codebase analysis for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'AnalysisService.analyzeCodebase');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'AnalysisService.analyzeCodebase');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Get semantic analysis from existing engine
       const semanticResult = await this.semanticEngine.analyzeCodebase(projectPath);
@@ -136,7 +141,7 @@ export class AnalysisService {
       
     } catch (error) {
       Logger.error('Codebase analysis failed:', error);
-      throw new Error(`Failed to analyze codebase: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Codebase analysis');
     }
   }
 
@@ -151,7 +156,11 @@ export class AnalysisService {
       Logger.info(`Getting language metrics for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'AnalysisService.getLanguageMetrics');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'AnalysisService.getLanguageMetrics');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Get basic analysis to extract languages
       const analysis = await this.semanticEngine.analyzeCodebase(projectPath);
@@ -181,7 +190,7 @@ export class AnalysisService {
       
     } catch (error) {
       Logger.error('Language metrics analysis failed:', error);
-      throw new Error(`Failed to get language metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Language metrics analysis');
     }
   }
 
@@ -196,7 +205,11 @@ export class AnalysisService {
       Logger.info(`Getting complexity metrics for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'AnalysisService.getComplexityMetrics');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'AnalysisService.getComplexityMetrics');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Get complexity from semantic analysis
       const analysis = await this.semanticEngine.analyzeCodebase(projectPath);
@@ -220,7 +233,7 @@ export class AnalysisService {
       
     } catch (error) {
       Logger.error('Complexity metrics analysis failed:', error);
-      throw new Error(`Failed to get complexity metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Complexity metrics analysis');
     }
   }
 
@@ -235,7 +248,11 @@ export class AnalysisService {
       Logger.info(`Extracting concepts for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'AnalysisService.extractConcepts');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'AnalysisService.extractConcepts');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Get existing concepts from database (read-only)
       const storedConcepts = this.database.getSemanticConcepts();
@@ -256,7 +273,7 @@ export class AnalysisService {
       
     } catch (error) {
       Logger.error('Concept extraction failed:', error);
-      throw new Error(`Failed to extract concepts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Concept extraction');
     }
   }
 

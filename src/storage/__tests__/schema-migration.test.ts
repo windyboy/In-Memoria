@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SQLiteDatabase } from '../sqlite-db.js';
-import { SimplifiedSQLiteDatabase } from '../simplified-sqlite-db.js';
+// SimplifiedSQLiteDatabase removed in Phase 3 - schema simplified and consolidated into SQLiteDatabase
 import { DatabaseMigrator } from '../migrations.js';
 import Database from 'better-sqlite3';
 
 describe('Schema Migration', () => {
   let legacyDb: SQLiteDatabase;
-  let simplifiedDb: SimplifiedSQLiteDatabase;
 
   beforeEach(() => {
     // Create legacy database with existing data
@@ -58,9 +57,6 @@ describe('Schema Migration', () => {
 
   afterEach(() => {
     legacyDb.close();
-    if (simplifiedDb) {
-      simplifiedDb.close();
-    }
   });
 
   describe('Migration Process', () => {

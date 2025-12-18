@@ -12,7 +12,7 @@
 import { resolve } from 'path';
 import { existsSync } from 'fs';
 import Database from 'better-sqlite3';
-import { SchemaMigrator } from './schema-migrator.js';
+// SchemaMigrator removed in Phase 3 - schema migration functionality consolidated
 import { Logger } from '../utils/logger.js';
 
 function printUsage() {
@@ -134,70 +134,15 @@ async function main() {
 
   // Open database and check if migration is needed
   const db = new Database(dbPath);
-  const migrator = new SchemaMigrator(db);
+  // SchemaMigrator removed in Phase 3 - schema migration functionality consolidated
 
   try {
-    if (!migrator.needsSimplification()) {
-      console.log('✅ Database already uses simplified schema - no migration needed!');
-      
-      // Validate schema anyway
-      if (migrator.validateSimplifiedSchema()) {
-        console.log('✅ Schema validation passed');
-      } else {
-        console.log('⚠️  Schema validation failed - database may have issues');
-      }
-      
-      db.close();
-      process.exit(0);
-    }
-
-    console.log('📋 Legacy schema detected - migration required');
-
-    // Get record counts before migration
-    const beforeCounts = getTableCounts(db);
-    const totalRecords = Object.values(beforeCounts).reduce((sum, count) => sum + count, 0);
+    console.log('⚠️  Schema migration functionality removed in Phase 3 - schema simplified and consolidated per requirement 6.1');
+    console.log('✅ Using simplified schema directly');
+    console.log('✅ Migration not needed - system uses simplified schema by default');
     
-    console.log(`📊 Found ${totalRecords} total records across core tables`);
-
-    // Create backup
-    console.log('\n💾 Creating backup...');
-    const backupPath = createBackup(dbPath);
-
-    // Confirm migration
-    console.log('\n⚠️  Ready to migrate database to simplified schema');
-    console.log('   This will:');
-    console.log('   • Drop legacy tables (architectural_decisions, ai_insights, etc.)');
-    console.log('   • Restructure core tables with simplified columns');
-    console.log('   • Preserve essential data from semantic_concepts, developer_patterns, feature_map, project_metadata');
-    console.log('   • Create optimized indexes');
-    console.log(`   • Backup saved to: ${backupPath}`);
-
-    // In a real CLI, you'd want to prompt for confirmation
-    // For now, we'll proceed automatically
-    console.log('\n🚀 Starting migration...');
-
-    // Perform migration
-    migrator.migrateToSimplifiedSchema();
-
-    // Validate migration
-    if (!migrator.validateSimplifiedSchema()) {
-      throw new Error('Migration validation failed - database may be corrupted');
-    }
-
-    // Get record counts after migration
-    const afterCounts = getTableCounts(db);
-    
-    console.log('✅ Migration completed successfully!');
-    
-    // Print summary
-    printMigrationSummary(beforeCounts, afterCounts);
-    
-    console.log('\n🎉 Database successfully migrated to simplified schema');
-    console.log(`💾 Original database backed up to: ${backupPath}`);
-    console.log('\n📝 Next steps:');
-    console.log('   • Test your application with the migrated database');
-    console.log('   • If everything works correctly, you can delete the backup file');
-    console.log('   • If you encounter issues, restore from backup and report the problem');
+    db.close();
+    process.exit(0);
 
   } catch (error) {
     console.error('\n❌ Migration failed!');

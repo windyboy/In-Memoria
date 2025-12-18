@@ -3,7 +3,7 @@
 import { initializeDIContainer } from '../core/bootstrap.js';
 import { Logger } from '../utils/logger.js';
 import { PathValidator } from '../utils/path-validator.js';
-import { CodebaseAnalysis, LanguageMetrics, ComplexityMetrics } from '../core/services/AnalysisService.js';
+import { translateError, isInMemoriaError } from '../core/errors.js';
 
 /**
  * CLI arguments for the analyze command
@@ -24,7 +24,12 @@ export interface AnalyzeArgs {
 export async function handleAnalyzeCommand(args: AnalyzeArgs): Promise<void> {
   try {
     // Validate and resolve the project path
-    const projectPath = PathValidator.validateProjectPath(args.path, 'analyze command');
+    let projectPath: string;
+    try {
+      projectPath = PathValidator.validateProjectPath(args.path, 'analyze command');
+    } catch (error) {
+      throw translateError(error, 'Path validation');
+    }
     
     // Initialize DI Container with project path
     const container = await initializeDIContainer({ projectPath });
@@ -33,8 +38,8 @@ export async function handleAnalyzeCommand(args: AnalyzeArgs): Promise<void> {
     const analysis = await container.analysisService.analyzeCodebase(projectPath);
     
     // Get additional metrics if requested
-    let languageMetrics: LanguageMetrics | undefined;
-    let complexityMetrics: ComplexityMetrics | undefined;
+    let languageMetrics: any | undefined;
+    let complexityMetrics: any | undefined;
     
     if (args.metrics || args.verbose) {
       languageMetrics = await container.analysisService.getLanguageMetrics(projectPath);
@@ -50,8 +55,9 @@ export async function handleAnalyzeCommand(args: AnalyzeArgs): Promise<void> {
     });
     
   } catch (error) {
-    Logger.error('Analyze command failed:', error);
-    console.error(`❌ Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const standardizedError = translateError(error, 'Analyze command');
+    Logger.error('Analyze command failed:', standardizedError);
+    console.error(`❌ Analysis failed [${standardizedError.code}]: ${standardizedError.message}`);
     process.exit(1);
   }
 }
@@ -63,10 +69,10 @@ export async function handleAnalyzeCommand(args: AnalyzeArgs): Promise<void> {
  * @param options - Formatting options
  */
 function formatAnalysisResult(
-  analysis: CodebaseAnalysis,
+  analysis: any,
   options: {
-    languageMetrics?: LanguageMetrics;
-    complexityMetrics?: ComplexityMetrics;
+    languageMetrics?: any;
+    complexityMetrics?: any;
     verbose?: boolean;
     showConcepts?: boolean;
   }
@@ -88,7 +94,7 @@ function formatAnalysisResult(
     
     if (options.verbose && options.languageMetrics.languages.length > 0) {
       console.log("\nLanguage Breakdown:");
-      options.languageMetrics.languages.forEach(lang => {
+      options.languageMetrics.languages.forEach((lang: any) => {
         console.log(`  - ${lang.name}: ${lang.fileCount} files (${lang.percentage}%)`);
       });
     }
@@ -109,7 +115,7 @@ function formatAnalysisResult(
       console.log(`Technical Debt Score: ${options.complexityMetrics.technicalDebt.score}/100`);
       if (options.complexityMetrics.technicalDebt.issues.length > 0) {
         console.log("Technical Debt Issues:");
-        options.complexityMetrics.technicalDebt.issues.forEach(issue => {
+        options.complexityMetrics.technicalDebt.issues.forEach((issue: any) => {
           console.log(`  - ${issue}`);
         });
       }
@@ -123,7 +129,7 @@ function formatAnalysisResult(
   
   if (options.showConcepts && analysis.concepts.length > 0) {
     console.log("\nFresh Concepts (from current analysis):");
-    analysis.concepts.slice(0, 5).forEach(concept => {
+    analysis.concepts.slice(0, 5).forEach((concept: any) => {
       console.log(`  - ${concept.name} (${concept.type}) - confidence: ${(concept.confidence * 100).toFixed(1)}%`);
     });
     
@@ -134,7 +140,7 @@ function formatAnalysisResult(
   
   if (options.verbose && analysis.patterns.length > 0) {
     console.log("\nFresh Patterns:");
-    analysis.patterns.slice(0, 5).forEach(pattern => {
+    analysis.patterns.slice(0, 5).forEach((pattern: any) => {
       console.log(`  - ${pattern.type}: ${pattern.description} (frequency: ${pattern.frequency})`);
     });
     
@@ -147,14 +153,14 @@ function formatAnalysisResult(
   if (options.verbose) {
     if (analysis.entryPoints && analysis.entryPoints.length > 0) {
       console.log("\nEntry Points:");
-      analysis.entryPoints.forEach(entry => {
+      analysis.entryPoints.forEach((entry: any) => {
         console.log(`  - ${entry.type}: ${entry.filePath}${entry.framework ? ` (${entry.framework})` : ''}`);
       });
     }
     
     if (analysis.keyDirectories && analysis.keyDirectories.length > 0) {
       console.log("\nKey Directories:");
-      analysis.keyDirectories.forEach(dir => {
+      analysis.keyDirectories.forEach((dir: any) => {
         console.log(`  - ${dir.path} (${dir.type}): ${dir.fileCount} files`);
       });
     }
@@ -163,7 +169,7 @@ function formatAnalysisResult(
   // Errors and warnings
   if (analysis.errors && analysis.errors.length > 0) {
     console.log("\n⚠️  Analysis Warnings:");
-    analysis.errors.forEach(error => {
+    analysis.errors.forEach((error: any) => {
       console.log(`  - ${error}`);
     });
   }

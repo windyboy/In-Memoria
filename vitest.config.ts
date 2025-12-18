@@ -30,7 +30,6 @@ export default defineConfig({
             include: ['src/**/*.{js,ts}'],
             exclude: [
                 'src/**/*.{test,spec}.{js,ts}',
-                'src/__tests__/**',
                 'src/**/__mocks__/**',
                 'src/types/**',
                 'dist/**',
@@ -59,13 +58,13 @@ export default defineConfig({
         clearMocks: true,
 
         // Setup files
-        setupFiles: ['./src/__tests__/setup.ts'],
+        setupFiles: ['./src/utils/test-setup.ts'],
     },
 
     resolve: {
         alias: {
             '@': resolve(__dirname, './src'),
-            '@tests': resolve(__dirname, './src/__tests__'),
+            '@tests': resolve(__dirname, './src/utils/test-helpers'),
         },
     },
 });

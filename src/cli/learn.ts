@@ -3,7 +3,7 @@
 import { initializeDIContainer } from '../core/bootstrap.js';
 import { Logger } from '../utils/logger.js';
 import { PathValidator } from '../utils/path-validator.js';
-import { LearningOptions } from '../core/services/LearningService.js';
+import { translateError, isInMemoriaError } from '../core/errors.js';
 
 /**
  * CLI arguments for the learn command
@@ -23,13 +23,18 @@ export interface LearnArgs {
 export async function handleLearnCommand(args: LearnArgs): Promise<void> {
   try {
     // Validate and resolve the project path
-    const projectPath = PathValidator.validateProjectPath(args.path, 'learn command');
+    let projectPath: string;
+    try {
+      projectPath = PathValidator.validateProjectPath(args.path, 'learn command');
+    } catch (error) {
+      throw translateError(error, 'Path validation');
+    }
     
     // Initialize DI Container with project path
     const container = await initializeDIContainer({ projectPath });
     
     // Transform CLI arguments to service options
-    const options: LearningOptions = {
+    const options: any = {
       force: args.force || false,
       progressCallback: createProgressCallback(args.verbose)
     };
@@ -46,8 +51,9 @@ export async function handleLearnCommand(args: LearnArgs): Promise<void> {
     }
     
   } catch (error) {
-    Logger.error('Learn command failed:', error);
-    console.error(`❌ Learning failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const standardizedError = translateError(error, 'Learn command');
+    Logger.error('Learn command failed:', standardizedError);
+    console.error(`❌ Learning failed [${standardizedError.code}]: ${standardizedError.message}`);
     process.exit(1);
   }
 }

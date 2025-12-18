@@ -1,6 +1,32 @@
-import { SearchEngine, SearchQuery, SearchResponse, SearchResult } from '../../engines/search-engine.js';
+// SearchEngine import removed - legacy module deleted in Phase 3
+// Define minimal interfaces for the service
+interface SearchQuery {
+  query: string;
+  type: string;
+  language?: string;
+  limit?: number;
+}
+
+interface SearchResult {
+  file: string;
+  content: string;
+  score: number;
+  context: string;
+  metadata: Record<string, any>;
+}
+
+interface SearchResponse {
+  results: SearchResult[];
+  totalFound: number;
+  searchType: string;
+}
+
+interface SearchEngine {
+  search(query: SearchQuery): Promise<SearchResponse>;
+}
 import { Logger } from '../../utils/logger.js';
 import { PathValidator } from '../../utils/path-validator.js';
+import { SearchError, ValidationError, translateError } from '../errors.js';
 
 /**
  * Search options for customizing search behavior
@@ -145,7 +171,7 @@ export class SearchServiceImpl implements SearchService {
       
     } catch (error) {
       Logger.error('Semantic search failed:', error);
-      throw new Error(`Semantic search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Semantic search');
     }
   }
 
@@ -194,7 +220,7 @@ export class SearchServiceImpl implements SearchService {
       
     } catch (error) {
       Logger.error('Pattern search failed:', error);
-      throw new Error(`Pattern search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Pattern search');
     }
   }
 
@@ -243,7 +269,7 @@ export class SearchServiceImpl implements SearchService {
       
     } catch (error) {
       Logger.error('Text search failed:', error);
-      throw new Error(`Text search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Text search');
     }
   }
 
@@ -256,15 +282,15 @@ export class SearchServiceImpl implements SearchService {
    */
   private validateSearchQuery(query: string, context: string): void {
     if (!query || typeof query !== 'string') {
-      throw new Error(`Invalid search query: query must be a non-empty string (${context})`);
+      throw new ValidationError(`Query must be a non-empty string (${context})`);
     }
     
     if (query.trim().length === 0) {
-      throw new Error(`Invalid search query: query cannot be empty or whitespace only (${context})`);
+      throw new ValidationError(`Query cannot be empty or whitespace only (${context})`);
     }
     
     if (query.length > 1000) {
-      throw new Error(`Invalid search query: query too long (max 1000 characters) (${context})`);
+      throw new ValidationError(`Query too long (max 1000 characters) (${context})`);
     }
   }
 }

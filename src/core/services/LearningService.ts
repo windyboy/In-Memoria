@@ -1,11 +1,13 @@
-import { SemanticEngine } from '../../engines/semantic-engine.js';
-import { PatternEngine } from '../../engines/pattern-engine.js';
+import { SemanticEngine } from '../../utils/semantic-engine.js';
+import { PatternEngine } from '../../utils/pattern-engine.js';
 import { SQLiteDatabase } from '../../storage/sqlite-db.js';
 import { VectorStore } from '../../storage/vector-store.js';
+import { createVectorStore } from '../../storage/backend-unified.js';
 import { ProgressTracker } from '../../utils/progress-tracker.js';
 import { Logger } from '../../utils/logger.js';
 import { PathValidator } from '../../utils/path-validator.js';
 import { nanoid } from 'nanoid';
+import { LearningError, PathError, StorageError, translateError } from '../errors.js';
 
 /**
  * Learning Service Interface
@@ -18,6 +20,7 @@ import { nanoid } from 'nanoid';
 export interface LearningOptions {
   force?: boolean;
   progressCallback?: (current: number, total: number, message: string) => void;
+  enableProgressController?: boolean; // Enable ProgressController integration for CLI and MCP
 }
 
 export interface LearningResult {
@@ -79,6 +82,86 @@ export interface LearningService {
    * Store developer patterns (single writer principle)
    */
   storeDeveloperPatterns(patterns: DeveloperPattern[]): Promise<void>;
+
+  /**
+   * Get current learning status for progress reporting
+   */
+  getLearningStatus(projectPath: string): Promise<{
+    isLearned: boolean;
+    lastLearned?: Date;
+    conceptCount: number;
+    patternCount: number;
+  }>;
+
+  /**
+   * Store AI insights (single writer principle)
+   */
+  storeAIInsight(insight: {
+    insightId: string;
+    insightType: string;
+    insightContent: any;
+    confidenceScore: number;
+    sourceAgent: string;
+    validationStatus: 'pending' | 'validated' | 'rejected';
+    impactPrediction: any;
+  }): Promise<void>;
+
+  /**
+   * Create or update work session (single writer principle)
+   */
+  createWorkSession(session: {
+    id: string;
+    projectPath: string;
+    currentFiles: string[];
+    completedTasks: string[];
+    pendingTasks: string[];
+    blockers: string[];
+    lastFeature?: string;
+  }): Promise<void>;
+
+  /**
+   * Update work session (single writer principle)
+   */
+  updateWorkSession(sessionId: string, updates: {
+    currentFiles?: string[];
+    lastFeature?: string;
+    pendingTasks?: string[];
+  }): Promise<void>;
+
+  /**
+   * Store project decision (single writer principle)
+   */
+  storeProjectDecision(decision: {
+    id: string;
+    projectPath: string;
+    decisionKey: string;
+    decisionValue: string;
+    reasoning?: string;
+  }): Promise<void>;
+
+  /**
+   * Store entry point (single writer principle)
+   */
+  storeEntryPoint(entryPoint: {
+    id: string;
+    projectPath: string;
+    entryType: string;
+    filePath: string;
+    description?: string;
+    framework?: string;
+  }): Promise<void>;
+
+  /**
+   * Store key directory (single writer principle)
+   */
+  storeKeyDirectory(directory: {
+    id: string;
+    projectPath: string;
+    directoryPath: string;
+    directoryType: string;
+    fileCount: number;
+    description?: string;
+  }): Promise<void>;
 }
 
 /**
@@ -90,61 +173,89 @@ export interface LearningService {
  */
 class LearningServiceImpl implements LearningService {
   private progressTracker: ProgressTracker | null = null;
+  private vectorStore: VectorStore;
 
   constructor(
     private semanticEngine: SemanticEngine,
     private patternEngine: PatternEngine,
-    private database: SQLiteDatabase,
-    private vectorStore: VectorStore
-  ) {}
+    private database: SQLiteDatabase
+  ) {
+    // Initialize single vector backend (SurrealDB) through unified interface - consolidation per requirement 6.1
+    this.vectorStore = createVectorStore();
+    Logger.info('LearningService initialized with single SurrealDB vector backend (consolidated)');
+  }
 
   /**
    * Learn from a codebase and store the results
    * 
    * This is the main learning method that coordinates the entire learning process.
    * It integrates with existing engines while being the single writer to storage.
+   * 
+   * The learning process is idempotent - running it multiple times on the same
+   * codebase will only update timestamps without duplicating data.
    */
   async learnFromCodebase(projectPath: string, options: LearningOptions = {}): Promise<LearningResult> {
     const startTime = Date.now();
     const errors: string[] = [];
     let conceptsLearned = 0;
     let patternsDiscovered = 0;
+    let isIdempotentUpdate = false;
+
+    // Set up SIGINT handler for graceful shutdown
+    const sigintHandler = this.setupSigintHandler();
 
     try {
       Logger.info(`Starting learning process for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'LearningService.learnFromCodebase');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'LearningService.learnFromCodebase');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
 
-      // Initialize progress tracking
+      // Initialize progress tracking with ProgressController integration
       this.progressTracker = new ProgressTracker();
       this.setupProgressPhases();
       
-      // Set up progress callback if provided
+      // Set up progress callback if provided (for CLI and MCP integration)
       if (options.progressCallback) {
         this.progressTracker.on('progress', (update) => {
           options.progressCallback!(update.current, update.total, update.message || update.phase);
         });
       }
 
-      // Check if already learned and not forcing re-learn
-      if (!options.force) {
-        const existingIntelligence = await this.checkExistingIntelligence(projectPath);
-        if (existingIntelligence && existingIntelligence.concepts > 0) {
-          Logger.info(`Using existing intelligence for ${projectPath}`);
-          return {
-            success: true,
-            conceptsLearned: existingIntelligence.concepts,
-            patternsDiscovered: existingIntelligence.patterns,
-            duration: Date.now() - startTime,
-            errors: ['Using existing intelligence (use force: true to re-learn)']
-          };
-        }
+      // Check if already learned and implement idempotent behavior
+      const existingMetadata = this.database.getProjectMetadata(projectPath);
+      if (!options.force && existingMetadata && existingMetadata.lastFullScan) {
+        // Idempotent update: only update timestamp and return existing counts
+        Logger.info(`Performing idempotent update for already learned project: ${projectPath}`);
+        isIdempotentUpdate = true;
+        
+        // Update only the timestamp
+        await this.updateProjectMetadataTimestamp(projectPath);
+        
+        // Get existing counts for response
+        const existingConcepts = this.database.getSemanticConcepts().length;
+        const existingPatterns = this.database.getDeveloperPatterns().length;
+        
+        return {
+          success: true,
+          conceptsLearned: existingConcepts,
+          patternsDiscovered: existingPatterns,
+          duration: Date.now() - startTime,
+          errors: ['Idempotent update: timestamp updated, no data duplication']
+        };
       }
 
       // Phase 1: Semantic Analysis
       this.progressTracker.startPhase('semantic_analysis');
       Logger.info('Phase 1: Starting semantic analysis...');
+      
+      // Report progress to ProgressController for CLI and MCP integration
+      if (options.progressCallback) {
+        options.progressCallback(0, 100, 'Starting semantic analysis');
+      }
       
       // Get basic codebase analysis (languages, frameworks, complexity)
       const codebaseAnalysis = await this.semanticEngine.analyzeCodebase(projectPath);
@@ -176,7 +287,7 @@ class LearningServiceImpl implements LearningService {
         updatedAt: new Date()
       }));
 
-      // Store concepts (single writer)
+      // Store concepts with idempotent behavior (single writer)
       await this.storeSemanticConceptsInternal(concepts);
       conceptsLearned = concepts.length;
       
@@ -189,6 +300,11 @@ class LearningServiceImpl implements LearningService {
       // Phase 2: Pattern Discovery
       this.progressTracker.startPhase('pattern_discovery');
       Logger.info('Phase 2: Starting pattern discovery...');
+      
+      // Report progress to ProgressController for CLI and MCP integration
+      if (options.progressCallback) {
+        options.progressCallback(0, 100, 'Starting pattern discovery');
+      }
       
       const patternResults = await this.patternEngine.extractPatterns(projectPath);
       this.progressTracker.updateProgress('pattern_discovery', 50, 'Pattern extraction complete');
@@ -206,7 +322,7 @@ class LearningServiceImpl implements LearningService {
         lastSeen: new Date()
       }));
 
-      // Store patterns (single writer)
+      // Store patterns with idempotent behavior (single writer)
       await this.storeDeveloperPatternsInternal(patterns);
       patternsDiscovered = patterns.length;
       
@@ -217,6 +333,11 @@ class LearningServiceImpl implements LearningService {
       this.progressTracker.startPhase('vector_indexing');
       Logger.info('Phase 3: Building vector index...');
       
+      // Report progress to ProgressController for CLI and MCP integration
+      if (options.progressCallback) {
+        options.progressCallback(0, 100, 'Building vector index');
+      }
+      
       await this.buildVectorIndex(concepts, patterns);
       
       this.progressTracker.updateProgress('vector_indexing', 100, 'Vector index complete');
@@ -225,6 +346,11 @@ class LearningServiceImpl implements LearningService {
       // Phase 4: Metadata Storage
       this.progressTracker.startPhase('metadata_storage');
       Logger.info('Phase 4: Storing project metadata...');
+      
+      // Report progress to ProgressController for CLI and MCP integration
+      if (options.progressCallback) {
+        options.progressCallback(0, 100, 'Storing project metadata');
+      }
       
       const metadata: ProjectMetadata = {
         projectPath,
@@ -254,9 +380,9 @@ class LearningServiceImpl implements LearningService {
       };
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      errors.push(errorMessage);
-      Logger.error('Learning process failed:', error);
+      const translatedError = translateError(error, 'Learning process');
+      errors.push(translatedError.message);
+      Logger.error('Learning process failed:', translatedError);
 
       return {
         success: false,
@@ -266,6 +392,11 @@ class LearningServiceImpl implements LearningService {
         errors
       };
     } finally {
+      // Clean up SIGINT handler
+      if (sigintHandler) {
+        process.removeListener('SIGINT', sigintHandler);
+      }
+      
       // Clean up progress tracker
       this.progressTracker = null;
     }
@@ -279,7 +410,11 @@ class LearningServiceImpl implements LearningService {
       Logger.info(`Updating project metadata for: ${projectPath}`);
       
       // Validate inputs
-      PathValidator.validateProjectPath(projectPath, 'LearningService.updateProjectMetadata');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'LearningService.updateProjectMetadata');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Store metadata using database (single writer)
       this.database.insertProjectMetadata({
@@ -296,7 +431,7 @@ class LearningServiceImpl implements LearningService {
       Logger.info('Project metadata updated successfully');
     } catch (error) {
       Logger.error('Failed to update project metadata:', error);
-      throw new Error(`Failed to update project metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Project metadata update');
     }
   }
 
@@ -325,7 +460,7 @@ class LearningServiceImpl implements LearningService {
       Logger.info('Semantic concepts stored successfully');
     } catch (error) {
       Logger.error('Failed to store semantic concepts:', error);
-      throw new Error(`Failed to store semantic concepts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Semantic concepts storage');
     }
   }
 
@@ -353,25 +488,61 @@ class LearningServiceImpl implements LearningService {
       Logger.info('Developer patterns stored successfully');
     } catch (error) {
       Logger.error('Failed to store developer patterns:', error);
-      throw new Error(`Failed to store developer patterns: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Developer patterns storage');
     }
   }
 
   /**
    * Internal method to store semantic concepts (single writer)
+   * Uses INSERT OR REPLACE to ensure idempotent behavior
    */
   private async storeSemanticConceptsInternal(concepts: any[]): Promise<void> {
     for (const concept of concepts) {
-      this.database.insertSemanticConcept(concept);
+      // Check if concept already exists to maintain idempotency
+      const existingConcepts = this.database.getSemanticConcepts(concept.filePath);
+      const existingConcept = existingConcepts.find(c => c.id === concept.id);
+      
+      if (existingConcept) {
+        // Update only if confidence score has improved or context has changed
+        if (concept.confidenceScore > existingConcept.confidenceScore || 
+            concept.context !== existingConcept.filePath) {
+          Logger.debug(`Updating existing concept: ${concept.id}`);
+          this.database.insertSemanticConcept({
+            ...concept,
+            updatedAt: new Date()
+          });
+        } else {
+          Logger.debug(`Skipping duplicate concept: ${concept.id}`);
+        }
+      } else {
+        // Insert new concept
+        this.database.insertSemanticConcept(concept);
+      }
     }
   }
 
   /**
    * Internal method to store developer patterns (single writer)
+   * Uses INSERT OR REPLACE to ensure idempotent behavior
    */
   private async storeDeveloperPatternsInternal(patterns: any[]): Promise<void> {
     for (const pattern of patterns) {
-      this.database.insertDeveloperPattern(pattern);
+      // Check if pattern already exists to maintain idempotency
+      const existingPatterns = this.database.getDeveloperPatterns(pattern.patternType);
+      const existingPattern = existingPatterns.find(p => p.patternId === pattern.patternId);
+      
+      if (existingPattern) {
+        // Update frequency and last seen timestamp for idempotent behavior
+        Logger.debug(`Updating existing pattern: ${pattern.patternId}`);
+        this.database.insertDeveloperPattern({
+          ...existingPattern,
+          frequency: Math.max(existingPattern.frequency, pattern.frequency),
+          confidence: Math.max(existingPattern.confidence, pattern.confidence)
+        });
+      } else {
+        // Insert new pattern
+        this.database.insertDeveloperPattern(pattern);
+      }
     }
   }
 
@@ -394,8 +565,7 @@ class LearningServiceImpl implements LearningService {
           // Update pattern frequency (single writer)
           this.database.insertDeveloperPattern({
             ...pattern,
-            frequency: pattern.frequency + 1,
-            lastSeen: new Date()
+            frequency: pattern.frequency + 1
           });
         }
       }
@@ -426,8 +596,7 @@ class LearningServiceImpl implements LearningService {
             this.database.insertDeveloperPattern({
               ...pattern,
               frequency: pattern.frequency + 1,
-              confidence: Math.min(1.0, pattern.confidence + 0.05),
-              lastSeen: new Date()
+              confidence: Math.min(1.0, pattern.confidence + 0.05)
             });
           } else {
             // Create new pattern entry (single writer)
@@ -441,9 +610,7 @@ class LearningServiceImpl implements LearningService {
               frequency: 1,
               contexts: [analysisData.change?.language || 'unknown'],
               examples: [],
-              confidence: 0.3,
-              createdAt: new Date(),
-              lastSeen: new Date()
+              confidence: 0.3
             });
           }
         }
@@ -581,13 +748,23 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Check for existing intelligence in the database
+   * This method is used to determine if learning has already been performed
+   * for idempotent behavior implementation
    */
   private async checkExistingIntelligence(projectPath: string): Promise<{ concepts: number; patterns: number } | null> {
     try {
+      // Check project metadata to see if learning has been completed
+      const metadata = this.database.getProjectMetadata(projectPath);
+      if (!metadata || !metadata.lastFullScan) {
+        return null;
+      }
+
+      // Get actual counts from the database
       const concepts = this.database.getSemanticConcepts().length;
       const patterns = this.database.getDeveloperPatterns().length;
 
       if (concepts > 0 || patterns > 0) {
+        Logger.info(`Found existing intelligence: ${concepts} concepts, ${patterns} patterns`);
         return { concepts, patterns };
       }
 
@@ -608,6 +785,257 @@ class LearningServiceImpl implements LearningService {
     this.progressTracker.addPhase('pattern_discovery', 100, 3);
     this.progressTracker.addPhase('vector_indexing', 100, 2);
     this.progressTracker.addPhase('metadata_storage', 100, 1);
+  }
+
+  /**
+   * Setup SIGINT handler for graceful shutdown
+   * Ensures database connections are closed properly on interruption
+   */
+  private setupSigintHandler(): (() => void) | null {
+    const handler = () => {
+      Logger.info('SIGINT received, gracefully shutting down learning process...');
+      
+      try {
+        // Complete current progress phase if active
+        if (this.progressTracker) {
+          this.progressTracker.complete();
+        }
+        
+        // Close database connections gracefully
+        if (this.database) {
+          this.database.close();
+        }
+        
+        Logger.info('Learning process shutdown complete');
+        process.exit(0);
+      } catch (error) {
+        Logger.error('Error during graceful shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGINT', handler);
+    return handler;
+  }
+
+  /**
+   * Get current learning status for progress reporting
+   * This method supports ProgressController integration for CLI and MCP
+   */
+  async getLearningStatus(projectPath: string): Promise<{
+    isLearned: boolean;
+    lastLearned?: Date;
+    conceptCount: number;
+    patternCount: number;
+  }> {
+    try {
+      const metadata = this.database.getProjectMetadata(projectPath);
+      const conceptCount = this.database.getSemanticConcepts().length;
+      const patternCount = this.database.getDeveloperPatterns().length;
+
+      return {
+        isLearned: !!metadata?.lastFullScan,
+        lastLearned: metadata?.lastFullScan,
+        conceptCount,
+        patternCount
+      };
+    } catch (error) {
+      Logger.error('Failed to get learning status:', error);
+      return {
+        isLearned: false,
+        conceptCount: 0,
+        patternCount: 0
+      };
+    }
+  }
+
+  /**
+   * Store AI insights (single writer principle)
+   */
+  async storeAIInsight(insight: {
+    insightId: string;
+    insightType: string;
+    insightContent: any;
+    confidenceScore: number;
+    sourceAgent: string;
+    validationStatus: 'pending' | 'validated' | 'rejected';
+    impactPrediction: any;
+  }): Promise<void> {
+    try {
+      Logger.info(`Storing AI insight: ${insight.insightId}`);
+      
+      // Store AI insight using database (single writer)
+      this.database.insertAIInsight({
+        insightId: insight.insightId,
+        insightType: insight.insightType,
+        insightContent: insight.insightContent,
+        confidenceScore: insight.confidenceScore,
+        sourceAgent: insight.sourceAgent,
+        validationStatus: insight.validationStatus,
+        impactPrediction: insight.impactPrediction
+      });
+      
+      Logger.info('AI insight stored successfully');
+    } catch (error) {
+      Logger.error('Failed to store AI insight:', error);
+      throw translateError(error, 'AI insight storage');
+    }
+  }
+
+  /**
+   * Create or update work session (single writer principle)
+   */
+  async createWorkSession(session: {
+    id: string;
+    projectPath: string;
+    currentFiles: string[];
+    completedTasks: string[];
+    pendingTasks: string[];
+    blockers: string[];
+    lastFeature?: string;
+  }): Promise<void> {
+    try {
+      Logger.info(`Creating work session: ${session.id}`);
+      
+      // Create work session using database (single writer)
+      this.database.createWorkSession(session);
+      
+      Logger.info('Work session created successfully');
+    } catch (error) {
+      Logger.error('Failed to create work session:', error);
+      throw translateError(error, 'Work session creation');
+    }
+  }
+
+  /**
+   * Update work session (single writer principle)
+   */
+  async updateWorkSession(sessionId: string, updates: {
+    currentFiles?: string[];
+    lastFeature?: string;
+    pendingTasks?: string[];
+  }): Promise<void> {
+    try {
+      Logger.info(`Updating work session: ${sessionId}`);
+      
+      // Update work session using database (single writer)
+      this.database.updateWorkSession(sessionId, updates);
+      
+      Logger.info('Work session updated successfully');
+    } catch (error) {
+      Logger.error('Failed to update work session:', error);
+      throw translateError(error, 'Work session update');
+    }
+  }
+
+  /**
+   * Store project decision (single writer principle)
+   */
+  async storeProjectDecision(decision: {
+    id: string;
+    projectPath: string;
+    decisionKey: string;
+    decisionValue: string;
+    reasoning?: string;
+  }): Promise<void> {
+    try {
+      Logger.info(`Storing project decision: ${decision.decisionKey}`);
+      
+      // Store project decision using database (single writer)
+      this.database.upsertProjectDecision({
+        id: decision.id,
+        projectPath: decision.projectPath,
+        decisionKey: decision.decisionKey,
+        decisionValue: decision.decisionValue,
+        reasoning: decision.reasoning
+      });
+      
+      Logger.info('Project decision stored successfully');
+    } catch (error) {
+      Logger.error('Failed to store project decision:', error);
+      throw translateError(error, 'Project decision storage');
+    }
+  }
+
+  /**
+   * Store entry point (single writer principle)
+   */
+  async storeEntryPoint(entryPoint: {
+    id: string;
+    projectPath: string;
+    entryType: string;
+    filePath: string;
+    description?: string;
+    framework?: string;
+  }): Promise<void> {
+    try {
+      Logger.info(`Storing entry point: ${entryPoint.filePath}`);
+      
+      // Store entry point using database (single writer)
+      this.database.insertEntryPoint(entryPoint);
+      
+      Logger.info('Entry point stored successfully');
+    } catch (error) {
+      Logger.error('Failed to store entry point:', error);
+      throw translateError(error, 'Entry point storage');
+    }
+  }
+
+  /**
+   * Store key directory (single writer principle)
+   */
+  async storeKeyDirectory(directory: {
+    id: string;
+    projectPath: string;
+    directoryPath: string;
+    directoryType: string;
+    fileCount: number;
+    description?: string;
+  }): Promise<void> {
+    try {
+      Logger.info(`Storing key directory: ${directory.directoryPath}`);
+      
+      // Store key directory using database (single writer)
+      this.database.insertKeyDirectory(directory);
+      
+      Logger.info('Key directory stored successfully');
+    } catch (error) {
+      Logger.error('Failed to store key directory:', error);
+      throw translateError(error, 'Key directory storage');
+    }
+  }
+
+  /**
+   * Update only the timestamp for idempotent learning operations
+   * This method implements the requirement that repeated learning should
+   * only update timestamps without duplicating data
+   */
+  private async updateProjectMetadataTimestamp(projectPath: string): Promise<void> {
+    try {
+      Logger.info(`Updating timestamp for idempotent learning: ${projectPath}`);
+      
+      const existingMetadata = this.database.getProjectMetadata(projectPath);
+      if (existingMetadata) {
+        // Update the existing metadata with new timestamp
+        this.database.insertProjectMetadata({
+          projectId: existingMetadata.projectId,
+          projectPath: existingMetadata.projectPath,
+          projectName: existingMetadata.projectName,
+          languagePrimary: existingMetadata.languagePrimary,
+          languagesDetected: existingMetadata.languagesDetected,
+          frameworkDetected: existingMetadata.frameworkDetected,
+          intelligenceVersion: existingMetadata.intelligenceVersion,
+          lastFullScan: new Date() // Only update the timestamp
+        });
+        
+        Logger.info('Project metadata timestamp updated successfully');
+      } else {
+        Logger.warn('No existing metadata found for timestamp update');
+      }
+    } catch (error) {
+      Logger.error('Failed to update project metadata timestamp:', error);
+      throw new Error(`Failed to update timestamp: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 

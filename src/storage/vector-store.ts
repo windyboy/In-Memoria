@@ -89,58 +89,37 @@ export {
 // Export backend configuration types for use by implementations
 export {
   BackendConfig,
-  BackendConfigAdapter,
   ValidationResult,
   PerformanceConfig,
   SurrealBackendConfigAdapter,
-  QdrantBackendConfigAdapter,
-  createBackendConfigAdapter,
   mergeWithDefaults,
   validateAndNormalizeConfig
-} from './backend-config.js';
+} from './backend-unified.js';
 
 // Export backend adapter types for use by implementations
 export {
   BaseBackendAdapter,
   SurrealBackendAdapter,
-  QdrantBackendAdapter,
   createBackendAdapter,
   createBackendAdapterFromEnv,
   EnhancedSurrealBackendAdapter,
-  EnhancedQdrantBackendAdapter,
+  // QdrantBackendAdapter and EnhancedQdrantBackendAdapter removed in Phase 3 - only SurrealDB supported per requirement 6.1
   createEnhancedBackendAdapter,
   createEnhancedBackendAdapterFromEnv
 } from './backend-adapters.js';
 
 // Export performance monitoring types for use by implementations
+// Export consolidated diagnostic types for use by implementations
 export {
   PerformanceMonitor,
   createPerformanceMonitor,
-  monitorPerformance,
   OperationMetrics,
   MemoryMetrics,
-  ConnectionMetrics
-} from './performance-monitor.js';
-
-// Export health monitoring types for use by implementations
-export {
-  HealthMonitorService,
-  createVectorBackendHealthCheck,
-  globalHealthMonitor,
   HealthCheckConfig,
-  HealthCheckResult,
-  HealthCheckFunction
-} from './health-monitor.js';
+  HealthCheckResult
+} from './diagnostics.js';
 
-// Export performance optimization types for use by implementations
-export {
-  PerformanceOptimizer,
-  createPerformanceOptimizer,
-  globalPerformanceOptimizer,
-  OptimizationRule,
-  OptimizationResult,
-  OptimizationConfig
-} from './performance-optimizer.js';
+// PerformanceOptimizer and related exports removed in Phase 3 - performance optimization consolidated
 
 // Export data integrity and consistency types for use by implementations
 export {
@@ -152,12 +131,7 @@ export {
   MetadataValidationRules
 } from './data-integrity.js';
 
-export {
-  DataMigrationManager,
-  MigrationProgress,
-  MigrationSummary,
-  MigrationUtils
-} from './data-migration.js';
+// DataMigrationManager and related exports removed in Phase 3 - data migration functionality consolidated
 
 export {
   DataConsistencyManager,
@@ -169,36 +143,14 @@ export {
   createDataConsistencyManager
 } from './data-consistency.js';
 
-// Export comprehensive logging and monitoring types for use by implementations
+// Export consolidated logging and monitoring types for use by implementations
 export {
   LoggingMonitor,
   createLoggingMonitor,
   LogEntry,
   DiagnosticInfo,
   LoggingConfig,
-  MonitoringConfig,
-  globalLoggingMonitorRegistry
-} from './logging-monitor.js';
+  MonitoringConfig
+} from './diagnostics.js';
 
-export {
-  DiagnosticSystem,
-  globalDiagnosticSystem,
-  SystemDiagnosticReport,
-  BackendDiagnostic,
-  SystemMetrics,
-  ConnectivityStatus,
-  ErrorPattern,
-  OperationalInsight,
-  DiagnosticAlert,
-  SystemRecommendation,
-  DiagnosticSummary
-} from './diagnostic-system.js';
-
-export {
-  MonitoringIntegration,
-  globalMonitoringIntegration,
-  createMonitoredVectorStore,
-  getSystemHealthSummary,
-  getSystemDiagnosticReport,
-  MonitoringIntegrationConfig
-} from './monitoring-integration.js';
+// MonitoringIntegration and related exports removed in Phase 3 - monitoring functionality consolidated

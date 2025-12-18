@@ -50,7 +50,7 @@ describe('DI Container Bootstrap', () => {
     expect(container.has(ServiceKeys.VECTOR_STORE)).toBe(true);
     expect(container.has(ServiceKeys.SEMANTIC_ENGINE)).toBe(true);
     expect(container.has(ServiceKeys.PATTERN_ENGINE)).toBe(true);
-    expect(container.has(ServiceKeys.SEARCH_ENGINE)).toBe(true);
+    // SEARCH_ENGINE removed in Phase 3 - legacy module deleted
   });
 
   it('should register utility services', async () => {
@@ -95,9 +95,9 @@ describe('DI Container Bootstrap', () => {
     const container = await initializeDIContainer({ projectPath: testProjectPath });
     
     // AnalysisService is now implemented and should work correctly
-    const result = await container.analysisService.analyzeCodebase('/tmp/test-project');
+    const result = await container.analysisService.analyzeCodebase(testProjectPath);
     expect(result).toBeDefined();
-    expect(result.projectPath).toBe('/tmp/test-project');
+    expect(result.projectPath).toBe(testProjectPath);
     
     // LearningService is now implemented and should work correctly
     const learningResult = await container.learningService.learnFromCodebase(testProjectPath);

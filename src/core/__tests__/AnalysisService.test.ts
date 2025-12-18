@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest';
 import { AnalysisService } from '../services/AnalysisService.js';
-import { SemanticEngine } from '../../engines/semantic-engine.js';
-import { PatternEngine } from '../../engines/pattern-engine.js';
+import { SemanticEngine } from '../../utils/semantic-engine.js';
+import { PatternEngine } from '../../utils/pattern-engine.js';
 import { SQLiteDatabase } from '../../storage/sqlite-db.js';
 
 // Mock the dependencies
@@ -153,7 +153,7 @@ describe('AnalysisService', () => {
 
       // Act & Assert
       await expect(analysisService.analyzeCodebase(projectPath))
-        .rejects.toThrow('Failed to analyze codebase: Analysis failed');
+        .rejects.toThrow('Learning failed: Codebase analysis: Analysis failed');
     });
   });
 

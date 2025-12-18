@@ -6,11 +6,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   BackendConfig,
   SurrealBackendConfigAdapter,
-  QdrantBackendConfigAdapter,
-  createBackendConfigAdapter,
   mergeWithDefaults,
   validateAndNormalizeConfig
-} from '../backend-config.js';
+} from '../backend-unified.js';
 
 describe('Backend Configuration Abstraction', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -103,94 +101,12 @@ describe('Backend Configuration Abstraction', () => {
     });
   });
 
-  describe('QdrantBackendConfigAdapter', () => {
-    it('should provide valid default configuration', () => {
-      const adapter = new QdrantBackendConfigAdapter();
-      const config = adapter.getDefaultConfig();
-      
-      expect(config.type).toBe('qdrant');
-      expect(config.connectionParams).toHaveProperty('url');
-      expect(config.connectionParams).toHaveProperty('collection');
-      expect(config.embeddingConfig).toHaveProperty('model');
-      expect(config.performanceSettings).toHaveProperty('connectionTimeout');
-      
-      const validation = adapter.validateConfig(config);
-      expect(validation.valid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-    });
-
-    it('should map environment variables correctly', () => {
-      process.env.QDRANT_URL = 'https://test.qdrant.com';
-      process.env.QDRANT_API_KEY = 'test-key';
-      process.env.QDRANT_COLLECTION = 'test-collection';
-      process.env.IN_MEMORIA_EMBEDDING_DIMENSION = '512';
-
-      const adapter = new QdrantBackendConfigAdapter();
-      const config = adapter.mapEnvironmentVariables();
-
-      expect(config.connectionParams.url).toBe('https://test.qdrant.com');
-      expect(config.connectionParams.apiKey).toBe('test-key');
-      expect(config.connectionParams.collection).toBe('test-collection');
-      expect(config.embeddingConfig.dimension).toBe(512);
-    });
-
-    it('should validate Qdrant-specific requirements', () => {
-      const adapter = new QdrantBackendConfigAdapter();
-      const invalidConfig: BackendConfig = {
-        type: 'qdrant',
-        connectionParams: {
-          url: 'invalid-url', // Invalid URL format
-          collection: '' // Empty collection name
-        },
-        embeddingConfig: {},
-        performanceSettings: {
-          connectionTimeout: 30000,
-          operationTimeout: 30000,
-          maxRetries: 3,
-          batchSize: 50
-        }
-      };
-
-      const validation = adapter.validateConfig(invalidConfig);
-      expect(validation.valid).toBe(false);
-      expect(validation.errors.some(error => error.includes('URL'))).toBe(true);
-      expect(validation.errors.some(error => error.includes('collection'))).toBe(true);
-    });
-
-    it('should warn about missing API key for cloud URLs', () => {
-      const adapter = new QdrantBackendConfigAdapter();
-      const config: BackendConfig = {
-        type: 'qdrant',
-        connectionParams: {
-          url: 'https://test.cloud.qdrant.com',
-          collection: 'test'
-          // No API key provided
-        },
-        embeddingConfig: {},
-        performanceSettings: {
-          connectionTimeout: 30000,
-          operationTimeout: 30000,
-          maxRetries: 3,
-          batchSize: 50
-        }
-      };
-
-      const validation = adapter.validateConfig(config);
-      expect(validation.warnings.some(warning => warning.includes('API key'))).toBe(true);
-    });
-  });
+  // QdrantBackendConfigAdapter removed in Task 24 - only SurrealDB supported per requirement 6.1
 
   describe('Factory Functions', () => {
-    it('should create correct adapter for backend type', () => {
-      const surrealAdapter = createBackendConfigAdapter('surreal');
-      const qdrantAdapter = createBackendConfigAdapter('qdrant');
-
-      expect(surrealAdapter).toBeInstanceOf(SurrealBackendConfigAdapter);
-      expect(qdrantAdapter).toBeInstanceOf(QdrantBackendConfigAdapter);
-    });
-
-    it('should throw error for unsupported backend type', () => {
-      expect(() => createBackendConfigAdapter('unsupported')).toThrow('Unsupported backend type');
+    it('should create SurrealDB adapter', () => {
+      const adapter = new SurrealBackendConfigAdapter();
+      expect(adapter).toBeInstanceOf(SurrealBackendConfigAdapter);
     });
 
     it('should merge configuration with defaults correctly', () => {

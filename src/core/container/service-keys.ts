@@ -27,9 +27,9 @@ export const ServiceKeys = {
   VECTOR_STORE: createServiceKey<import('../../storage/vector-store.js').VectorStore>('vectorStore'),
   
   // Engines (to be wrapped by services)
-  SEMANTIC_ENGINE: createServiceKey<import('../../engines/semantic-engine.js').SemanticEngine>('semanticEngine'),
-  PATTERN_ENGINE: createServiceKey<import('../../engines/pattern-engine.js').PatternEngine>('patternEngine'),
-  SEARCH_ENGINE: createServiceKey<import('../../engines/search-engine.js').SearchEngine>('searchEngine'),
+  SEMANTIC_ENGINE: createServiceKey<import('../../utils/semantic-engine.js').SemanticEngine>('semanticEngine'),
+  PATTERN_ENGINE: createServiceKey<import('../../utils/pattern-engine.js').PatternEngine>('patternEngine'),
+  // SEARCH_ENGINE removed - legacy module deleted in Phase 3
   
   // Utilities
   LOGGER: createServiceKey<typeof import('../../utils/logger.js').Logger>('logger'),

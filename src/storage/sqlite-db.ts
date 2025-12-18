@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, existsSync } from 'fs';
 import { dirname, isAbsolute } from 'path';
-import { DatabaseMigrator } from './migrations.js';
+import { DatabaseMigrator } from './migrations-simple.js';
 import { Logger } from '../utils/logger.js';
 
 /**
@@ -155,9 +155,8 @@ export class SQLiteDatabase {
   insertSemanticConcept(concept: Omit<SemanticConcept, 'createdAt' | 'updatedAt'>): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO semantic_concepts (
-        id, concept_name, concept_type, confidence_score, 
-        relationships, evolution_history, file_path, line_range
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, name, type, confidence, context
+      ) VALUES (?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -165,10 +164,7 @@ export class SQLiteDatabase {
       concept.conceptName,
       concept.conceptType,
       concept.confidenceScore,
-      JSON.stringify(concept.relationships),
-      JSON.stringify(concept.evolutionHistory),
-      concept.filePath,
-      JSON.stringify(concept.lineRange)
+      concept.filePath || ''
     );
   }
 
@@ -177,7 +173,7 @@ export class SQLiteDatabase {
     let params: QueryParams = [];
 
     if (filePath) {
-      query += ' WHERE file_path = ?';
+      query += ' WHERE context = ?';
       params = [filePath];
     }
 
@@ -186,15 +182,15 @@ export class SQLiteDatabase {
 
     return rows.map((row: DatabaseRow) => ({
       id: String(row.id),
-      conceptName: String(row.concept_name),
-      conceptType: String(row.concept_type),
-      confidenceScore: Number(row.confidence_score),
-      relationships: JSON.parse(String(row.relationships || '{}')),
-      evolutionHistory: JSON.parse(String(row.evolution_history || '{}')),
-      filePath: String(row.file_path),
-      lineRange: JSON.parse(String(row.line_range || '{"start": 0, "end": 0}')),
-      createdAt: new Date(String(row.created_at) + ' UTC'),
-      updatedAt: new Date(String(row.updated_at) + ' UTC')
+      conceptName: String(row.name),
+      conceptType: String(row.type),
+      confidenceScore: Number(row.confidence),
+      relationships: {},
+      evolutionHistory: {},
+      filePath: String(row.context || ''),
+      lineRange: { start: 0, end: 0 },
+      createdAt: new Date(String(row.created_at)),
+      updatedAt: new Date(String(row.created_at)) // Use created_at as updated_at for simplified schema
     }));
   }
 
@@ -202,9 +198,8 @@ export class SQLiteDatabase {
   insertDeveloperPattern(pattern: Omit<DeveloperPattern, 'createdAt' | 'lastSeen'>): void {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO developer_patterns (
-        pattern_id, pattern_type, pattern_content, frequency,
-        contexts, examples, confidence, last_seen
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        id, category, name, frequency, examples
+      ) VALUES (?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -212,9 +207,7 @@ export class SQLiteDatabase {
       pattern.patternType,
       JSON.stringify(pattern.patternContent),
       pattern.frequency,
-      JSON.stringify(pattern.contexts),
-      JSON.stringify(pattern.examples),
-      pattern.confidence
+      JSON.stringify(pattern.examples)
     );
   }
 
@@ -223,11 +216,11 @@ export class SQLiteDatabase {
     let params: QueryParams = [];
 
     if (patternType) {
-      query += ' WHERE pattern_type = ?';
+      query += ' WHERE category = ?';
       params = [patternType];
     }
 
-    query += ' ORDER BY frequency DESC, confidence DESC';
+    query += ' ORDER BY frequency DESC';
 
     // Apply limit to prevent token overflow (default: 50 patterns max)
     if (limit !== undefined && limit > 0) {
@@ -242,15 +235,15 @@ export class SQLiteDatabase {
     const rows = stmt.all(...params) as DatabaseRow[];
 
     return rows.map((row: DatabaseRow) => ({
-      patternId: String(row.pattern_id),
-      patternType: String(row.pattern_type),
-      patternContent: JSON.parse(String(row.pattern_content)),
+      patternId: String(row.id),
+      patternType: String(row.category),
+      patternContent: JSON.parse(String(row.name || '{}')), // Parse name as JSON content
       frequency: Number(row.frequency),
-      contexts: JSON.parse(String(row.contexts || '[]')),
+      contexts: [],
       examples: JSON.parse(String(row.examples || '[]')),
-      confidence: Number(row.confidence),
-      createdAt: new Date(String(row.created_at) + ' UTC'),
-      lastSeen: new Date(String(row.last_seen) + ' UTC')
+      confidence: 0.5, // Default confidence for simplified schema
+      createdAt: new Date(String(row.created_at)),
+      lastSeen: new Date(String(row.created_at)) // Use created_at as lastSeen for simplified schema
     }));
   }
 

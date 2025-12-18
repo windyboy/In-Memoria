@@ -14,21 +14,17 @@ import {
   HealthStatus, 
   PerformanceMetrics,
   BackendConfig,
-  BackendConfigAdapter,
   ValidationResult,
   VectorStoreError,
   ErrorTranslator,
   createErrorTranslator,
-  normalizeError,
-  createBackendConfigAdapter
+  normalizeError
 } from './vector-store.js';
+import { SurrealBackendConfigAdapter } from './backend-unified.js';
 import { SurrealVectorDB } from './vector-db.js';
-import { QdrantVectorDB } from './qdrant-vector-db.js';
 import { EmbeddingConfig } from './vector-types.js';
 import { Logger } from '../utils/logger.js';
-import { PerformanceMonitor, createPerformanceMonitor } from './performance-monitor.js';
-import { LoggingMonitor, createLoggingMonitor } from './logging-monitor.js';
-import { globalDiagnosticSystem } from './diagnostic-system.js';
+import { PerformanceMonitor, createPerformanceMonitor, LoggingMonitor, createLoggingMonitor } from './diagnostics.js';
 import { CircuitBreaker } from '../utils/circuit-breaker.js';
 
 /**
@@ -36,7 +32,7 @@ import { CircuitBreaker } from '../utils/circuit-breaker.js';
  */
 export abstract class BaseBackendAdapter implements VectorStore {
   protected errorTranslator: ErrorTranslator;
-  protected configAdapter: BackendConfigAdapter;
+  protected configAdapter: SurrealBackendConfigAdapter;
   protected config: BackendConfig;
   protected performanceMonitor: PerformanceMonitor;
   protected loggingMonitor: LoggingMonitor;
@@ -48,7 +44,7 @@ export abstract class BaseBackendAdapter implements VectorStore {
     circuitBreaker?: CircuitBreaker
   ) {
     this.errorTranslator = createErrorTranslator(backendType);
-    this.configAdapter = createBackendConfigAdapter(backendType);
+    this.configAdapter = new SurrealBackendConfigAdapter();
     this.config = config;
     this.circuitBreaker = circuitBreaker;
     
@@ -223,7 +219,7 @@ export abstract class BaseBackendAdapter implements VectorStore {
    * Get health status from the monitor with custom backend checks
    */
   protected async getAdapterHealthStatus(customHealthCheck?: () => Promise<Record<string, unknown>>): Promise<HealthStatus> {
-    return this.performanceMonitor.getHealthStatus(customHealthCheck);
+    return this.performanceMonitor.getHealthStatus();
   }
 
   /**
@@ -237,28 +233,23 @@ export abstract class BaseBackendAdapter implements VectorStore {
    * Get enhanced performance metrics with logging data
    */
   getEnhancedPerformanceMetrics() {
-    return this.loggingMonitor.getEnhancedPerformanceMetrics();
+    return this.performanceMonitor.getPerformanceMetrics();
   }
 
   /**
    * Register this adapter with the global diagnostic system
    */
   protected registerWithDiagnosticSystem(vectorStore: VectorStore): void {
-    globalDiagnosticSystem.registerBackend(
-      this.backendType,
-      vectorStore,
-      this.loggingMonitor,
-      this.circuitBreaker
-    );
-    Logger.info(`${this.backendType} adapter registered with diagnostic system`);
+    // Diagnostic system registration removed - consolidated into diagnostics.ts
+    Logger.info(`${this.backendType} adapter diagnostic registration skipped (consolidated)`);
   }
 
   /**
    * Unregister this adapter from the global diagnostic system
    */
   protected unregisterFromDiagnosticSystem(): void {
-    globalDiagnosticSystem.unregisterBackend(this.backendType);
-    Logger.info(`${this.backendType} adapter unregistered from diagnostic system`);
+    // Diagnostic system unregistration removed - consolidated into diagnostics.ts
+    Logger.info(`${this.backendType} adapter diagnostic unregistration skipped (consolidated)`);
   }
 
   /**
@@ -303,7 +294,7 @@ export class SurrealBackendAdapter extends BaseBackendAdapter {
     this.backend = new SurrealVectorDB(undefined, embeddingConfig);
     
     // Record successful connection
-    this.performanceMonitor.recordConnection(true);
+    // this.performanceMonitor.recordConnection(true); // Method removed in consolidation
     
     // Register with diagnostic system
     this.registerWithDiagnosticSystem(this);
@@ -435,156 +426,7 @@ export class SurrealBackendAdapter extends BaseBackendAdapter {
   }
 }
 
-/**
- * Adapter for Qdrant backend that wraps QdrantVectorDB with standardized interfaces
- */
-export class QdrantBackendAdapter extends BaseBackendAdapter {
-  private backend: QdrantVectorDB;
-  
-  constructor(config: BackendConfig, circuitBreaker?: CircuitBreaker) {
-    super('qdrant', config, circuitBreaker);
-    
-    // Create QdrantVectorDB instance with configuration
-    const embeddingConfig = config.embeddingConfig;
-    const qdrantOptions = {
-      url: config.connectionParams.url as string,
-      apiKey: config.connectionParams.apiKey as string | undefined,
-      collection: config.connectionParams.collection as string
-    };
-    
-    this.backend = new QdrantVectorDB(embeddingConfig, qdrantOptions);
-    
-    // Register with diagnostic system
-    this.registerWithDiagnosticSystem(this);
-    
-    Logger.info('Qdrant backend adapter created');
-  }
-  
-  async initialize(collectionName?: string): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.initialize(collectionName);
-    }, 'initialize');
-  }
-  
-  async verifyEmbeddingModel(): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.verifyEmbeddingModel();
-    }, 'verifyEmbeddingModel');
-  }
-  
-  async storeCodeEmbedding(code: string, metadata: CodeMetadata): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.storeCodeEmbedding(code, metadata);
-    }, 'storeCodeEmbedding');
-  }
-  
-  async storeMultipleEmbeddings(codeChunks: string[], metadataList: CodeMetadata[]): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.storeMultipleEmbeddings(codeChunks, metadataList);
-    }, 'storeMultipleEmbeddings');
-  }
-  
-  async findSimilarCode(
-    query: string, 
-    limit?: number, 
-    filters?: Record<string, unknown>
-  ): Promise<SemanticSearchResult[]> {
-    return this.wrapOperation(async () => {
-      return await this.backend.findSimilarCode(query, limit, filters);
-    }, 'findSimilarCode');
-  }
-  
-  async findSimilarCodeByFile(filePath: string, limit?: number): Promise<SemanticSearchResult[]> {
-    return this.wrapOperation(async () => {
-      return await this.backend.findSimilarCodeByFile(filePath, limit);
-    }, 'findSimilarCodeByFile');
-  }
-  
-  async findSimilarCodeByLanguage(
-    query: string, 
-    language: string, 
-    limit?: number
-  ): Promise<SemanticSearchResult[]> {
-    return this.wrapOperation(async () => {
-      return await this.backend.findSimilarCodeByLanguage(query, language, limit);
-    }, 'findSimilarCodeByLanguage');
-  }
-  
-  async updateCodeEmbedding(id: string, code: string, metadata: CodeMetadata): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.updateCodeEmbedding(id, code, metadata);
-    }, 'updateCodeEmbedding');
-  }
-  
-  async deleteCodeEmbedding(id: string): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.deleteCodeEmbedding(id);
-    }, 'deleteCodeEmbedding');
-  }
-  
-  async deleteCodeEmbeddingsByFile(filePath: string): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.deleteCodeEmbeddingsByFile(filePath);
-    }, 'deleteCodeEmbeddingsByFile');
-  }
-  
-  async getCollectionStats(): Promise<{ count: number; metadata: unknown }> {
-    return this.wrapOperation(async () => {
-      return await this.backend.getCollectionStats();
-    }, 'getCollectionStats');
-  }
-  
-  async close(): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.close();
-    }, 'close');
-  }
-  
-  getBackendInfo(): BackendInfo {
-    return this.wrapSync(() => {
-      const info = this.backend.getBackendInfo();
-      // Enhance with adapter-specific information
-      return {
-        ...info,
-        metadata: {
-          ...info.metadata,
-          adapterVersion: '1.0.0',
-          configurationSource: 'adapter',
-          errorHandling: 'standardized'
-        }
-      };
-    }, 'getBackendInfo');
-  }
-  
-  async getHealthStatus(): Promise<HealthStatus> {
-    return this.wrapOperation(async () => {
-      const status = await this.backend.getHealthStatus();
-      // Enhance with adapter-specific health information
-      return {
-        ...status,
-        details: {
-          ...status.details,
-          adapter: 'qdrant-backend-adapter',
-          configValid: this.configAdapter.validateConfig(this.config).valid
-        }
-      };
-    }, 'getHealthStatus');
-  }
-  
-  async getPerformanceMetrics(): Promise<PerformanceMetrics> {
-    return this.wrapOperation(async () => {
-      const metrics = await this.backend.getPerformanceMetrics();
-      // Enhance with adapter-specific metrics
-      return {
-        ...metrics,
-        operationCounts: {
-          ...metrics.operationCounts,
-          adapterOperations: 0 // Would be tracked in real implementation
-        }
-      };
-    }, 'getPerformanceMetrics');
-  }
-}
+// QdrantBackendAdapter removed in Phase 3 - only SurrealDB backend supported per requirement 6.1
 
 /**
  * Factory function to create appropriate backend adapter
@@ -595,11 +437,8 @@ export function createBackendAdapter(config: BackendConfig, circuitBreaker?: Cir
     case 'surrealdb':
       return new SurrealBackendAdapter(config, circuitBreaker);
     
-    case 'qdrant':
-      return new QdrantBackendAdapter(config, circuitBreaker);
-    
     default:
-      throw new Error(`Unsupported backend type: ${config.type}`);
+      throw new Error(`Unsupported backend type: ${config.type}. Only SurrealDB is supported in Phase 3 per requirement 6.1`);
   }
 }
 
@@ -608,7 +447,7 @@ export function createBackendAdapter(config: BackendConfig, circuitBreaker?: Cir
  */
 export function createBackendAdapterFromEnv(backendType?: string): VectorStore {
   const type = backendType || process.env.IN_MEMORIA_VECTOR_BACKEND || 'surreal';
-  const configAdapter = createBackendConfigAdapter(type);
+  const configAdapter = new SurrealBackendConfigAdapter();
   const config = configAdapter.mapEnvironmentVariables();
   
   return createBackendAdapter(config);
@@ -628,7 +467,7 @@ export class EnhancedSurrealBackendAdapter extends BaseBackendAdapter {
     this.backend = new SurrealVectorDB(undefined, embeddingConfig);
     
     // Record successful connection
-    this.performanceMonitor.recordConnection(true);
+    // this.performanceMonitor.recordConnection(true); // Method removed in consolidation
     
     // Register with diagnostic system
     this.registerWithDiagnosticSystem(this);
@@ -713,7 +552,7 @@ export class EnhancedSurrealBackendAdapter extends BaseBackendAdapter {
   async close(): Promise<void> {
     return this.wrapOperation(async () => {
       await this.backend.close();
-      this.performanceMonitor.recordConnectionClosure();
+      // this.performanceMonitor.recordConnectionClosure(); // Method removed in consolidation
       this.dispose();
     }, 'close');
   }
@@ -775,172 +614,7 @@ export class EnhancedSurrealBackendAdapter extends BaseBackendAdapter {
   }
 }
 
-/**
- * Enhanced QdrantBackendAdapter with performance monitoring
- */
-export class EnhancedQdrantBackendAdapter extends BaseBackendAdapter {
-  private backend: QdrantVectorDB;
-  
-  constructor(config: BackendConfig, circuitBreaker?: CircuitBreaker) {
-    super('qdrant', config, circuitBreaker);
-    
-    // Create QdrantVectorDB instance with configuration
-    const embeddingConfig = config.embeddingConfig;
-    const qdrantOptions = {
-      url: config.connectionParams.url as string,
-      apiKey: config.connectionParams.apiKey as string | undefined,
-      collection: config.connectionParams.collection as string
-    };
-    
-    this.backend = new QdrantVectorDB(embeddingConfig, qdrantOptions);
-    
-    // Record successful connection
-    this.performanceMonitor.recordConnection(true);
-    
-    // Register with diagnostic system
-    this.registerWithDiagnosticSystem(this);
-    
-    Logger.info('Enhanced Qdrant backend adapter created');
-  }
-  
-  async initialize(collectionName?: string): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.initialize(collectionName);
-    }, 'initialize');
-  }
-  
-  async verifyEmbeddingModel(): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.verifyEmbeddingModel();
-    }, 'verifyEmbeddingModel');
-  }
-  
-  async storeCodeEmbedding(code: string, metadata: CodeMetadata): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.storeCodeEmbedding(code, metadata);
-    }, 'storeCodeEmbedding');
-  }
-  
-  async storeMultipleEmbeddings(codeChunks: string[], metadataList: CodeMetadata[]): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.storeMultipleEmbeddings(codeChunks, metadataList);
-    }, 'storeMultipleEmbeddings');
-  }
-  
-  async findSimilarCode(
-    query: string, 
-    limit?: number, 
-    filters?: Record<string, unknown>
-  ): Promise<SemanticSearchResult[]> {
-    return this.wrapOperation(async () => {
-      return await this.backend.findSimilarCode(query, limit, filters);
-    }, 'findSimilarCode');
-  }
-  
-  async findSimilarCodeByFile(filePath: string, limit?: number): Promise<SemanticSearchResult[]> {
-    return this.wrapOperation(async () => {
-      return await this.backend.findSimilarCodeByFile(filePath, limit);
-    }, 'findSimilarCodeByFile');
-  }
-  
-  async findSimilarCodeByLanguage(
-    query: string, 
-    language: string, 
-    limit?: number
-  ): Promise<SemanticSearchResult[]> {
-    return this.wrapOperation(async () => {
-      return await this.backend.findSimilarCodeByLanguage(query, language, limit);
-    }, 'findSimilarCodeByLanguage');
-  }
-  
-  async updateCodeEmbedding(id: string, code: string, metadata: CodeMetadata): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.updateCodeEmbedding(id, code, metadata);
-    }, 'updateCodeEmbedding');
-  }
-  
-  async deleteCodeEmbedding(id: string): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.deleteCodeEmbedding(id);
-    }, 'deleteCodeEmbedding');
-  }
-  
-  async deleteCodeEmbeddingsByFile(filePath: string): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.deleteCodeEmbeddingsByFile(filePath);
-    }, 'deleteCodeEmbeddingsByFile');
-  }
-  
-  async getCollectionStats(): Promise<{ count: number; metadata: unknown }> {
-    return this.wrapOperation(async () => {
-      return await this.backend.getCollectionStats();
-    }, 'getCollectionStats');
-  }
-  
-  async close(): Promise<void> {
-    return this.wrapOperation(async () => {
-      await this.backend.close();
-      this.performanceMonitor.recordConnectionClosure();
-      this.dispose();
-    }, 'close');
-  }
-  
-  getBackendInfo(): BackendInfo {
-    return this.wrapSync(() => {
-      const info = this.backend.getBackendInfo();
-      // Enhance with adapter-specific information
-      return {
-        ...info,
-        metadata: {
-          ...info.metadata,
-          adapterVersion: '1.0.0',
-          configurationSource: 'adapter',
-          errorHandling: 'standardized',
-          performanceMonitoring: 'enabled'
-        }
-      };
-    }, 'getBackendInfo');
-  }
-  
-  async getHealthStatus(): Promise<HealthStatus> {
-    return this.getAdapterHealthStatus(async () => {
-      const backendStatus = await this.backend.getHealthStatus();
-      return {
-        backend: backendStatus.status,
-        backendDetails: backendStatus.details,
-        adapter: 'enhanced-qdrant-backend-adapter',
-        configValid: this.configAdapter.validateConfig(this.config).valid,
-        backendResponseTime: backendStatus.responseTime
-      };
-    });
-  }
-  
-  async getPerformanceMetrics(): Promise<PerformanceMetrics> {
-    const adapterMetrics = this.getAdapterPerformanceMetrics();
-    const backendMetrics = await this.backend.getPerformanceMetrics();
-    
-    // Merge adapter and backend metrics
-    return {
-      operationCounts: {
-        ...backendMetrics.operationCounts,
-        ...adapterMetrics.operationCounts
-      },
-      averageResponseTimes: {
-        ...backendMetrics.averageResponseTimes,
-        ...adapterMetrics.averageResponseTimes
-      },
-      errorRates: {
-        ...backendMetrics.errorRates,
-        ...adapterMetrics.errorRates
-      },
-      cacheHitRates: {
-        ...backendMetrics.cacheHitRates,
-        ...adapterMetrics.cacheHitRates
-      },
-      memoryUsage: Math.max(backendMetrics.memoryUsage, adapterMetrics.memoryUsage)
-    };
-  }
-}
+// EnhancedQdrantBackendAdapter removed in Phase 3 - only SurrealDB backend supported per requirement 6.1
 
 /**
  * Enhanced factory function to create appropriate backend adapter with performance monitoring
@@ -951,11 +625,8 @@ export function createEnhancedBackendAdapter(config: BackendConfig, circuitBreak
     case 'surrealdb':
       return new EnhancedSurrealBackendAdapter(config, circuitBreaker);
     
-    case 'qdrant':
-      return new EnhancedQdrantBackendAdapter(config, circuitBreaker);
-    
     default:
-      throw new Error(`Unsupported backend type: ${config.type}`);
+      throw new Error(`Unsupported backend type: ${config.type}. Only SurrealDB is supported in Phase 3 per requirement 6.1`);
   }
 }
 
@@ -964,7 +635,7 @@ export function createEnhancedBackendAdapter(config: BackendConfig, circuitBreak
  */
 export function createEnhancedBackendAdapterFromEnv(backendType?: string): VectorStore {
   const type = backendType || process.env.IN_MEMORIA_VECTOR_BACKEND || 'surreal';
-  const configAdapter = createBackendConfigAdapter(type);
+  const configAdapter = new SurrealBackendConfigAdapter();
   const config = configAdapter.mapEnvironmentVariables();
   
   return createEnhancedBackendAdapter(config);

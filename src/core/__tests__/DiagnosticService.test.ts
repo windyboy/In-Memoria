@@ -120,7 +120,7 @@ describe('DiagnosticService', () => {
 
       // Act & Assert
       await expect(diagnosticService.getLearningStatus(projectPath))
-        .rejects.toThrow('Failed to get learning status: Database error');
+        .rejects.toThrow('Storage operation failed: Learning status retrieval: Database error');
     });
   });
 

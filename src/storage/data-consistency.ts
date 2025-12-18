@@ -15,12 +15,7 @@ import {
   DataFormatSpec,
   MigrationContext
 } from './data-integrity.js';
-import { 
-  DataMigrationManager, 
-  MigrationSummary, 
-  MigrationProgress,
-  MigrationUtils
-} from './data-migration.js';
+// DataMigrationManager and related imports removed in Phase 3 - data migration functionality consolidated
 import { Logger } from '../utils/logger.js';
 import { ValidationError, OperationError } from './vector-errors.js';
 
@@ -82,16 +77,12 @@ export interface ConsistencyRepairResult {
 export class DataConsistencyManager {
   private validator: DataIntegrityValidator;
   private relationshipManager: SemanticRelationshipManager;
-  private migrationManager: DataMigrationManager;
+  // migrationManager removed in Phase 3 - data migration functionality consolidated
 
   constructor(embeddingConfig: EmbeddingConfig) {
     this.validator = new DataIntegrityValidator(embeddingConfig);
     this.relationshipManager = new SemanticRelationshipManager();
-    this.migrationManager = new DataMigrationManager(
-      this.validator,
-      this.relationshipManager,
-      MigrationUtils.createProgressReporter()
-    );
+    // DataMigrationManager removed in Phase 3 - data migration functionality consolidated
 
     Logger.info('Data consistency manager initialized');
   }
@@ -420,21 +411,12 @@ export class DataConsistencyManager {
     sourceBackend: VectorStore,
     targetBackend: VectorStore,
     context: MigrationContext
-  ): Promise<MigrationSummary> {
+  ): Promise<any> {
     Logger.info('Starting migration with consistency checks');
 
     try {
-      // Validate migration prerequisites
-      const prerequisites = await MigrationUtils.validateMigrationPrerequisites(
-        sourceBackend,
-        targetBackend
-      );
-
-      if (!prerequisites.valid) {
-        throw new ValidationError(
-          `Migration prerequisites not met: ${prerequisites.errors.join(', ')}`
-        );
-      }
+      // Migration functionality removed in Phase 3 - data migration consolidated
+      throw new Error('Migration functionality removed in Phase 3 - data migration consolidated per requirement 6.1');
 
       // Perform consistency check on source data
       const sourceConsistency = await this.performConsistencyCheck(sourceBackend);
@@ -448,24 +430,11 @@ export class DataConsistencyManager {
         }
       }
 
-      // Perform the migration
-      const migrationResult = await this.migrationManager.migrateData(
-        sourceBackend,
-        targetBackend,
-        context
-      );
+      // Migration functionality removed in Phase 3 - data migration consolidated
+      throw new Error('Migration functionality removed in Phase 3 - data migration consolidated per requirement 6.1');
 
-      // Verify target data consistency after migration
-      if (migrationResult.success) {
-        const targetConsistency = await this.performConsistencyCheck(targetBackend);
-        if (!targetConsistency.consistent) {
-          Logger.error('Target data consistency check failed after migration');
-          migrationResult.success = false;
-          migrationResult.errors.push('Target data consistency verification failed');
-        }
-      }
-
-      return migrationResult;
+      // Migration functionality removed - return error
+      return { success: false, errors: ['Migration functionality removed in Phase 3'] };
 
     } catch (error) {
       Logger.error('Migration with consistency checks failed:', error);

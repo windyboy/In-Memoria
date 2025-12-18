@@ -3,7 +3,8 @@ import { VectorStore } from '../../storage/vector-store.js';
 import { Logger } from '../../utils/logger.js';
 import { PathValidator } from '../../utils/path-validator.js';
 import { existsSync, statSync } from 'fs';
-import { config } from '../../config/config.js';
+import { config } from '../../utils/config.js';
+import { PathError, StorageError, translateError } from '../errors.js';
 
 /**
  * Learning status for a project
@@ -194,7 +195,11 @@ export class DiagnosticServiceImpl implements DiagnosticService {
       Logger.info(`Getting learning status for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'DiagnosticService.getLearningStatus');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'DiagnosticService.getLearningStatus');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Get existing intelligence data
       const concepts = this.database.getSemanticConcepts();
@@ -243,7 +248,7 @@ export class DiagnosticServiceImpl implements DiagnosticService {
       
     } catch (error) {
       Logger.error('Failed to get learning status:', error);
-      throw new Error(`Failed to get learning status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Learning status retrieval');
     }
   }
 
@@ -291,7 +296,7 @@ export class DiagnosticServiceImpl implements DiagnosticService {
       
     } catch (error) {
       Logger.error('Failed to get system metrics:', error);
-      throw new Error(`Failed to get system metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'System metrics retrieval');
     }
   }
 
@@ -306,7 +311,11 @@ export class DiagnosticServiceImpl implements DiagnosticService {
       Logger.info(`Getting intelligence metrics for: ${projectPath}`);
       
       // Validate the project path
-      PathValidator.validateProjectPath(projectPath, 'DiagnosticService.getIntelligenceMetrics');
+      try {
+        PathValidator.validateProjectPath(projectPath, 'DiagnosticService.getIntelligenceMetrics');
+      } catch (error) {
+        throw translateError(error, 'Path validation');
+      }
       
       // Get intelligence data
       const concepts = this.database.getSemanticConcepts();
@@ -332,7 +341,7 @@ export class DiagnosticServiceImpl implements DiagnosticService {
       
     } catch (error) {
       Logger.error('Failed to get intelligence metrics:', error);
-      throw new Error(`Failed to get intelligence metrics: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Intelligence metrics retrieval');
     }
   }
 
@@ -379,7 +388,7 @@ export class DiagnosticServiceImpl implements DiagnosticService {
       
     } catch (error) {
       Logger.error('Failed to get health status:', error);
-      throw new Error(`Failed to get health status: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw translateError(error, 'Health status retrieval');
     }
   }
 

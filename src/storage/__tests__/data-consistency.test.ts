@@ -12,9 +12,7 @@ import {
   DataIntegrityValidator,
   SemanticRelationshipManager
 } from '../data-integrity.js';
-import { 
-  MigrationUtils
-} from '../data-migration.js';
+// MigrationUtils removed in Phase 3 - data migration functionality consolidated
 import { CodeMetadata, SemanticSearchResult } from '../vector-store.js';
 import { EmbeddingConfig } from '../vector-types.js';
 
@@ -349,46 +347,7 @@ describe('DataConsistencyManager', () => {
   });
 });
 
-describe('MigrationUtils', () => {
-  describe('createMigrationContext', () => {
-    it('should create migration context with defaults', () => {
-      const context = MigrationUtils.createMigrationContext('surreal', 'qdrant');
-      
-      expect(context.sourceBackend).toBe('surreal');
-      expect(context.targetBackend).toBe('qdrant');
-      expect(context.preserveIds).toBe(true);
-      expect(context.batchSize).toBe(100);
-      expect(context.validateIntegrity).toBe(true);
-    });
-
-    it('should override defaults with provided options', () => {
-      const context = MigrationUtils.createMigrationContext('surreal', 'qdrant', {
-        batchSize: 50,
-        preserveIds: false
-      });
-      
-      expect(context.batchSize).toBe(50);
-      expect(context.preserveIds).toBe(false);
-      expect(context.validateIntegrity).toBe(true); // Still default
-    });
-  });
-
-  describe('estimateMigrationTime', () => {
-    it('should estimate migration time', () => {
-      const time = MigrationUtils.estimateMigrationTime(1000, 100, 10);
-      
-      expect(time).toBeGreaterThan(0);
-      expect(typeof time).toBe('number');
-    });
-  });
-
-  describe('createProgressReporter', () => {
-    it('should create progress reporter function', () => {
-      const reporter = MigrationUtils.createProgressReporter(1000);
-      expect(typeof reporter).toBe('function');
-    });
-  });
-});
+// MigrationUtils removed in Task 24 consolidation - only SurrealDB backend supported per requirement 6.1
 
 describe('DataConsistencyUtils', () => {
   describe('createDefaultRepairOptions', () => {

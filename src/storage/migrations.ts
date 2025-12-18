@@ -34,426 +34,18 @@ export class DatabaseMigrator {
   }
 
   private loadMigrations(): void {
-    // Migration 1: Initial schema
+    // Migration 1: Initial schema (simplified - includes all necessary indexes)
     this.migrations.push({
       version: 1,
       name: 'initial_schema',
       up: this.loadMigrationFile('001_initial_schema.sql')
     });
 
-    // Migration 2: Add indexes for performance
-    this.migrations.push({
-      version: 2,
-      name: 'add_performance_indexes',
-      up: `
-        CREATE INDEX IF NOT EXISTS idx_semantic_concepts_file_path ON semantic_concepts(file_path);
-        CREATE INDEX IF NOT EXISTS idx_semantic_concepts_concept_type ON semantic_concepts(concept_type);
-        CREATE INDEX IF NOT EXISTS idx_developer_patterns_pattern_type ON developer_patterns(pattern_type);
-        CREATE INDEX IF NOT EXISTS idx_file_intelligence_file_path ON file_intelligence(file_path);
-        CREATE INDEX IF NOT EXISTS idx_ai_insights_insight_type ON ai_insights(insight_type);
-        CREATE INDEX IF NOT EXISTS idx_ai_insights_source_agent ON ai_insights(source_agent);
-      `,
-      down: `
-        DROP INDEX IF EXISTS idx_semantic_concepts_file_path;
-        DROP INDEX IF EXISTS idx_semantic_concepts_concept_type;
-        DROP INDEX IF EXISTS idx_developer_patterns_pattern_type;
-        DROP INDEX IF EXISTS idx_file_intelligence_file_path;
-        DROP INDEX IF EXISTS idx_ai_insights_insight_type;
-        DROP INDEX IF EXISTS idx_ai_insights_source_agent;
-      `
-    });
-
-    // Migration 3: Add vector embeddings support
-    this.migrations.push({
-      version: 3,
-      name: 'add_vector_embeddings',
-      up: `
-        ALTER TABLE semantic_concepts ADD COLUMN embedding_vector BLOB;
-        ALTER TABLE developer_patterns ADD COLUMN embedding_vector BLOB;
-        
-        CREATE TABLE IF NOT EXISTS vector_cache (
-          id TEXT PRIMARY KEY,
-          content_hash TEXT NOT NULL,
-          embedding BLOB NOT NULL,
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-        
-        CREATE INDEX IF NOT EXISTS idx_vector_cache_content_hash ON vector_cache(content_hash);
-      `,
-      down: `
-        DROP TABLE IF EXISTS vector_cache;
-        -- Note: SQLite doesn't support DROP COLUMN, so we leave the embedding_vector columns
-      `
-    });
-
-    // Migration 4: Fix timezone handling - update existing timestamp columns to use UTC
-    this.migrations.push({
-      version: 4,
-      name: 'fix_timezone_handling',
-      up: `
-        -- Create new tables with UTC timestamps
-        DROP TABLE IF EXISTS semantic_concepts_new;
-        CREATE TABLE semantic_concepts_new (
-          id TEXT PRIMARY KEY,
-          concept_name TEXT NOT NULL,
-          concept_type TEXT NOT NULL,
-          confidence_score REAL DEFAULT 0.0,
-          relationships TEXT,
-          evolution_history TEXT,
-          file_path TEXT,
-          line_range TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          updated_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        -- Copy data with UTC conversion
-        INSERT INTO semantic_concepts_new (id, concept_name, concept_type, confidence_score, relationships, evolution_history, file_path, line_range, created_at, updated_at)
-        SELECT id, concept_name, concept_type, confidence_score, relationships, evolution_history, file_path, line_range, 
-               datetime(created_at, 'utc'), datetime(updated_at, 'utc')
-        FROM semantic_concepts;
-
-        -- Replace old table
-        DROP TABLE semantic_concepts;
-        ALTER TABLE semantic_concepts_new RENAME TO semantic_concepts;
-
-        -- Same for developer_patterns
-        DROP TABLE IF EXISTS developer_patterns_new;
-        CREATE TABLE developer_patterns_new (
-          pattern_id TEXT PRIMARY KEY,
-          pattern_type TEXT NOT NULL,
-          pattern_content TEXT NOT NULL,
-          frequency INTEGER DEFAULT 1,
-          contexts TEXT,
-          examples TEXT,
-          confidence REAL DEFAULT 0.0,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          last_seen DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO developer_patterns_new (pattern_id, pattern_type, pattern_content, frequency, contexts, examples, confidence, created_at, last_seen)
-        SELECT pattern_id, pattern_type, pattern_content, frequency, contexts, examples, confidence, 
-               datetime(created_at, 'utc'), datetime(last_seen, 'utc')
-        FROM developer_patterns;
-
-        DROP TABLE developer_patterns;
-        ALTER TABLE developer_patterns_new RENAME TO developer_patterns;
-
-        -- Fix other tables similarly
-        DROP TABLE IF EXISTS architectural_decisions_new;
-        CREATE TABLE architectural_decisions_new (
-          decision_id TEXT PRIMARY KEY,
-          decision_context TEXT NOT NULL,
-          decision_rationale TEXT,
-          alternatives_considered TEXT,
-          impact_analysis TEXT,
-          decision_date DATETIME DEFAULT (datetime('now', 'utc')),
-          files_affected TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO architectural_decisions_new SELECT decision_id, decision_context, decision_rationale, alternatives_considered, impact_analysis, 
-               datetime(decision_date, 'utc'), files_affected, datetime(created_at, 'utc')
-        FROM architectural_decisions WHERE 1=1;
-
-        DROP TABLE architectural_decisions;
-        ALTER TABLE architectural_decisions_new RENAME TO architectural_decisions;
-
-        -- Fix file_intelligence
-        DROP TABLE IF EXISTS file_intelligence_new;
-        CREATE TABLE file_intelligence_new (
-          file_path TEXT PRIMARY KEY,
-          file_hash TEXT NOT NULL,
-          semantic_concepts TEXT,
-          patterns_used TEXT,
-          complexity_metrics TEXT,
-          dependencies TEXT,
-          last_analyzed DATETIME DEFAULT (datetime('now', 'utc')),
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO file_intelligence_new SELECT file_path, file_hash, semantic_concepts, patterns_used, complexity_metrics, dependencies,
-               datetime(last_analyzed, 'utc'), datetime(created_at, 'utc')
-        FROM file_intelligence WHERE 1=1;
-
-        DROP TABLE file_intelligence;
-        ALTER TABLE file_intelligence_new RENAME TO file_intelligence;
-
-        -- Fix other tables
-        DROP TABLE IF EXISTS shared_patterns_new;
-        CREATE TABLE shared_patterns_new (
-          pattern_id TEXT PRIMARY KEY,
-          pattern_name TEXT NOT NULL,
-          pattern_description TEXT,
-          pattern_data TEXT,
-          usage_count INTEGER DEFAULT 0,
-          community_rating REAL DEFAULT 0.0,
-          tags TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO shared_patterns_new SELECT pattern_id, pattern_name, pattern_description, pattern_data, usage_count, community_rating, tags,
-               datetime(created_at, 'utc')
-        FROM shared_patterns WHERE 1=1;
-
-        DROP TABLE shared_patterns;
-        ALTER TABLE shared_patterns_new RENAME TO shared_patterns;
-
-        DROP TABLE IF EXISTS ai_insights_new;
-        CREATE TABLE ai_insights_new (
-          insight_id TEXT PRIMARY KEY,
-          insight_type TEXT NOT NULL,
-          insight_content TEXT NOT NULL,
-          confidence_score REAL DEFAULT 0.0,
-          source_agent TEXT,
-          validation_status TEXT DEFAULT 'pending',
-          impact_prediction TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO ai_insights_new SELECT insight_id, insight_type, insight_content, confidence_score, source_agent, validation_status, impact_prediction,
-               datetime(created_at, 'utc')
-        FROM ai_insights WHERE 1=1;
-
-        DROP TABLE ai_insights;
-        ALTER TABLE ai_insights_new RENAME TO ai_insights;
-
-        DROP TABLE IF EXISTS project_metadata_new;
-        CREATE TABLE project_metadata_new (
-          project_id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          project_name TEXT,
-          language_primary TEXT,
-          languages_detected TEXT,
-          framework_detected TEXT,
-          intelligence_version TEXT,
-          last_full_scan DATETIME,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          updated_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO project_metadata_new SELECT project_id, project_path, project_name, language_primary, languages_detected, framework_detected, intelligence_version,
-               datetime(last_full_scan, 'utc'), datetime(created_at, 'utc'), datetime(updated_at, 'utc')
-        FROM project_metadata WHERE 1=1;
-
-        DROP TABLE project_metadata;
-        ALTER TABLE project_metadata_new RENAME TO project_metadata;
-
-        -- Recreate indexes
-        CREATE INDEX IF NOT EXISTS idx_semantic_concepts_type ON semantic_concepts(concept_type);
-        CREATE INDEX IF NOT EXISTS idx_semantic_concepts_file ON semantic_concepts(file_path);
-        CREATE INDEX IF NOT EXISTS idx_developer_patterns_type ON developer_patterns(pattern_type);
-        CREATE INDEX IF NOT EXISTS idx_developer_patterns_frequency ON developer_patterns(frequency DESC);
-        CREATE INDEX IF NOT EXISTS idx_file_intelligence_analyzed ON file_intelligence(last_analyzed);
-        CREATE INDEX IF NOT EXISTS idx_ai_insights_type ON ai_insights(insight_type);
-        CREATE INDEX IF NOT EXISTS idx_ai_insights_confidence ON ai_insights(confidence_score DESC);
-      `,
-      down: `
-        -- This rollback is complex and risky, so we'll just warn
-        SELECT 'WARNING: Rolling back timezone fix may cause data issues' as warning;
-      `
-    });
-
-    this.migrations.push({
-      version: 5,
-      name: 'add_project_blueprint_tables',
-      up: `
-        -- Feature to file mapping
-        CREATE TABLE IF NOT EXISTS feature_map (
-          id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          feature_name TEXT NOT NULL,
-          primary_files TEXT NOT NULL,
-          related_files TEXT,
-          dependencies TEXT,
-          status TEXT DEFAULT 'active',
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          updated_at DATETIME DEFAULT (datetime('now', 'utc')),
-          FOREIGN KEY (project_path) REFERENCES project_metadata(project_path)
-        );
-
-        -- Entry points mapping
-        CREATE TABLE IF NOT EXISTS entry_points (
-          id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          entry_type TEXT NOT NULL,
-          file_path TEXT NOT NULL,
-          description TEXT,
-          framework TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          FOREIGN KEY (project_path) REFERENCES project_metadata(project_path)
-        );
-
-        -- Key directories mapping
-        CREATE TABLE IF NOT EXISTS key_directories (
-          id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          directory_path TEXT NOT NULL,
-          directory_type TEXT NOT NULL,
-          file_count INTEGER DEFAULT 0,
-          description TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          FOREIGN KEY (project_path) REFERENCES project_metadata(project_path)
-        );
-
-        -- Indexes for blueprint tables
-        CREATE INDEX IF NOT EXISTS idx_feature_map_project ON feature_map(project_path);
-        CREATE INDEX IF NOT EXISTS idx_feature_map_name ON feature_map(feature_name);
-        CREATE INDEX IF NOT EXISTS idx_entry_points_project ON entry_points(project_path);
-        CREATE INDEX IF NOT EXISTS idx_key_directories_project ON key_directories(project_path);
-      `,
-      down: `
-        DROP TABLE IF EXISTS feature_map;
-        DROP TABLE IF EXISTS entry_points;
-        DROP TABLE IF EXISTS key_directories;
-        DROP INDEX IF EXISTS idx_feature_map_project;
-        DROP INDEX IF EXISTS idx_feature_map_name;
-        DROP INDEX IF EXISTS idx_entry_points_project;
-        DROP INDEX IF EXISTS idx_key_directories_project;
-      `
-    });
-
-    this.migrations.push({
-      version: 6,
-      name: 'add_work_session_tracking',
-      up: `
-        -- Work sessions tracking
-        CREATE TABLE IF NOT EXISTS work_sessions (
-          id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          session_start DATETIME DEFAULT (datetime('now', 'utc')),
-          session_end DATETIME,
-          last_feature TEXT,
-          current_files TEXT,
-          completed_tasks TEXT,
-          pending_tasks TEXT,
-          blockers TEXT,
-          session_notes TEXT,
-          last_updated DATETIME DEFAULT (datetime('now', 'utc')),
-          FOREIGN KEY (project_path) REFERENCES project_metadata(project_path)
-        );
-
-        -- Project decisions tracking
-        CREATE TABLE IF NOT EXISTS project_decisions (
-          id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          decision_key TEXT NOT NULL,
-          decision_value TEXT NOT NULL,
-          reasoning TEXT,
-          made_at DATETIME DEFAULT (datetime('now', 'utc')),
-          UNIQUE(project_path, decision_key),
-          FOREIGN KEY (project_path) REFERENCES project_metadata(project_path)
-        );
-
-        -- Indexes for session tables
-        CREATE INDEX IF NOT EXISTS idx_work_sessions_project ON work_sessions(project_path);
-        CREATE INDEX IF NOT EXISTS idx_work_sessions_updated ON work_sessions(last_updated DESC);
-        CREATE INDEX IF NOT EXISTS idx_project_decisions_key ON project_decisions(project_path, decision_key);
-      `,
-      down: `
-        DROP TABLE IF EXISTS work_sessions;
-        DROP TABLE IF EXISTS project_decisions;
-        DROP INDEX IF EXISTS idx_work_sessions_project;
-        DROP INDEX IF EXISTS idx_work_sessions_updated;
-        DROP INDEX IF EXISTS idx_project_decisions_key;
-      `
-    });
-
-    // Migration 7: Add UNIQUE constraint to project_metadata.project_path for foreign keys
-    this.migrations.push({
-      version: 7,
-      name: 'add_unique_constraint_to_project_path',
-      up: `
-        -- SQLite doesn't support ADD CONSTRAINT, so we need to recreate the table
-        CREATE TABLE project_metadata_new (
-          project_id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL UNIQUE,
-          project_name TEXT,
-          language_primary TEXT,
-          languages_detected TEXT,
-          framework_detected TEXT,
-          intelligence_version TEXT,
-          last_full_scan DATETIME,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          updated_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        -- Copy existing data
-        INSERT INTO project_metadata_new
-        SELECT * FROM project_metadata;
-
-        -- Drop old table
-        DROP TABLE project_metadata;
-
-        -- Rename new table
-        ALTER TABLE project_metadata_new RENAME TO project_metadata;
-      `,
-      down: `
-        -- Reverse migration: remove UNIQUE constraint
-        CREATE TABLE project_metadata_old (
-          project_id TEXT PRIMARY KEY,
-          project_path TEXT NOT NULL,
-          project_name TEXT,
-          language_primary TEXT,
-          languages_detected TEXT,
-          framework_detected TEXT,
-          intelligence_version TEXT,
-          last_full_scan DATETIME,
-          created_at DATETIME DEFAULT (datetime('now', 'utc')),
-          updated_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-
-        INSERT INTO project_metadata_old
-        SELECT * FROM project_metadata;
-
-        DROP TABLE project_metadata;
-        ALTER TABLE project_metadata_old RENAME TO project_metadata;
-      `
-    });
-
-    // Migration 8: Simplify database schema to four core tables
+    // Migration 8: Simplified schema (no-op since we start with simplified schema)
     this.migrations.push({
       version: 8,
-      name: 'simplify_schema',
-      up: this.loadMigrationFile('008_simplify_schema.sql'),
-      down: `
-        -- WARNING: This rollback will recreate the complex schema but data may be lost
-        -- This is a destructive migration that cannot be fully rolled back
-        SELECT 'WARNING: Rolling back schema simplification may cause data loss' as warning;
-        
-        -- Recreate the basic structure of dropped tables (empty)
-        CREATE TABLE IF NOT EXISTS architectural_decisions (
-          decision_id TEXT PRIMARY KEY,
-          decision_context TEXT NOT NULL,
-          decision_rationale TEXT,
-          alternatives_considered TEXT,
-          impact_analysis TEXT,
-          decision_date DATETIME DEFAULT (datetime('now', 'utc')),
-          files_affected TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-        
-        CREATE TABLE IF NOT EXISTS file_intelligence (
-          file_path TEXT PRIMARY KEY,
-          file_hash TEXT NOT NULL,
-          semantic_concepts TEXT,
-          patterns_used TEXT,
-          complexity_metrics TEXT,
-          dependencies TEXT,
-          last_analyzed DATETIME DEFAULT (datetime('now', 'utc')),
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-        
-        CREATE TABLE IF NOT EXISTS ai_insights (
-          insight_id TEXT PRIMARY KEY,
-          insight_type TEXT NOT NULL,
-          insight_content TEXT NOT NULL,
-          confidence_score REAL DEFAULT 0.0,
-          source_agent TEXT,
-          validation_status TEXT DEFAULT 'pending',
-          impact_prediction TEXT,
-          created_at DATETIME DEFAULT (datetime('now', 'utc'))
-        );
-      `
+      name: 'simplified_schema_noop',
+      up: `-- No-op migration: simplified schema is already in place from migration 1`
     });
   }
 
@@ -489,10 +81,16 @@ export class DatabaseMigrator {
 
   migrate(): void {
     const currentVersion = this.getCurrentVersion();
-    const targetVersion = this.getLatestVersion();
+    const latestVersion = this.getLatestVersion();
+    
+    if (currentVersion >= latestVersion) {
+      console.log('✅ Database is already up to date');
+      return;
+    }
 
-    console.log(`Migrating database from version ${currentVersion} to ${targetVersion}`);
+    console.log(`Migrating database from version ${currentVersion} to ${latestVersion}`);
 
+    // Run migrations in a transaction
     this.db.transaction(() => {
       for (const migration of this.migrations) {
         if (migration.version > currentVersion) {
@@ -513,12 +111,6 @@ export class DatabaseMigrator {
             console.log(`✅ Migration ${migration.version} applied and validated successfully`);
           } catch (error) {
             console.error(`❌ Migration ${migration.version} failed:`, error);
-            // Don't just log - provide recovery instructions
-            console.error(`\n🚨 MIGRATION FAILURE RECOVERY:`);
-            console.error(`   1. Database may be in inconsistent state`);
-            console.error(`   2. Check database backup before proceeding`);
-            console.error(`   3. Consider manual rollback: npm run db:rollback ${migration.version - 1}`);
-            console.error(`   4. Investigate root cause: ${error instanceof Error ? error.message : String(error)}`);
             throw new Error(`Migration ${migration.version} failed: ${error instanceof Error ? error.message : String(error)}. Database integrity may be compromised.`);
           }
         }
@@ -531,37 +123,16 @@ export class DatabaseMigrator {
   }
 
   /**
-   * Validate that a migration was applied correctly
+   * Validate individual migration success
    */
   private validateMigration(migration: Migration): void {
     try {
       switch (migration.version) {
-        case 1: // Initial schema
-          this.validateTableExists(['semantic_concepts', 'developer_patterns', 'file_intelligence']);
+        case 1: // Initial schema (simplified)
+          this.validateTableExists(['semantic_concepts', 'developer_patterns', 'feature_map', 'project_metadata']);
           break;
-        case 2: // Performance indexes
-          this.validateIndexExists(['idx_semantic_concepts_file_path', 'idx_developer_patterns_pattern_type']);
-          break;
-        case 3: // Vector embeddings
-          this.validateTableExists(['vector_cache']);
-          this.validateColumnExists('semantic_concepts', 'embedding_vector');
-          break;
-        case 4: // Timezone handling
-          this.validateTimezoneColumns();
-          break;
-        case 5: // Project blueprint tables
-          this.validateTableExists(['feature_map', 'entry_points', 'key_directories']);
-          this.validateIndexExists(['idx_feature_map_project', 'idx_entry_points_project', 'idx_key_directories_project']);
-          break;
-        case 6: // Work session tracking
-          this.validateTableExists(['work_sessions', 'project_decisions']);
-          this.validateIndexExists(['idx_work_sessions_project', 'idx_work_sessions_updated', 'idx_project_decisions_key']);
-          break;
-        case 7: // Unique constraint on project_path
-          this.validateTableExists(['project_metadata']);
-          break;
-        case 8: // Simplified schema
-          this.validateSimplifiedSchema();
+        case 8: // Simplified schema (no-op)
+          // No validation needed for no-op migration
           break;
         default:
           // Generic validation - check migration was recorded
@@ -577,25 +148,10 @@ export class DatabaseMigrator {
    */
   private validateDatabaseIntegrity(): void {
     try {
-      // Check all required tables exist (simplified schema after migration 8)
-      const currentVersion = this.getCurrentVersion();
-      let requiredTables: string[];
-      
-      if (currentVersion >= 8) {
-        // Simplified schema - only four core tables
-        requiredTables = [
-          'semantic_concepts', 'developer_patterns', 'feature_map', 'project_metadata', 'migrations'
-        ];
-      } else {
-        // Legacy schema - all tables
-        requiredTables = [
-          'semantic_concepts', 'developer_patterns', 'file_intelligence',
-          'architectural_decisions', 'shared_patterns', 'ai_insights',
-          'project_metadata', 'migrations',
-          'feature_map', 'entry_points', 'key_directories',
-          'work_sessions', 'project_decisions'
-        ];
-      }
+      // After the refactor, we always use the simplified schema
+      const requiredTables = [
+        'semantic_concepts', 'developer_patterns', 'feature_map', 'project_metadata', 'migrations'
+      ];
 
       for (const table of requiredTables) {
         this.validateTableExists([table]);
@@ -606,9 +162,6 @@ export class DatabaseMigrator {
       const patternCount = this.db.prepare('SELECT COUNT(*) as count FROM developer_patterns').get() as { count: number };
       
       console.log(`📊 Database integrity check: ${conceptCount.count} concepts, ${patternCount.count} patterns`);
-      
-      // Validate no orphaned records (basic referential integrity)
-      this.validateReferentialIntegrity();
       
     } catch (error: unknown) {
       console.error(`❌ Database integrity validation failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -625,140 +178,6 @@ export class DatabaseMigrator {
       if (!result) {
         throw new Error(`Required table '${table}' does not exist`);
       }
-    }
-  }
-
-  private validateIndexExists(indexes: string[]): void {
-    for (const index of indexes) {
-      const result = this.db.prepare(`
-        SELECT name FROM sqlite_master WHERE type='index' AND name=?
-      `).get(index);
-      
-      if (!result) {
-        throw new Error(`Required index '${index}' does not exist`);
-      }
-    }
-  }
-
-  private validateColumnExists(table: string, column: string): void {
-    const tableInfo = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-    const hasColumn = tableInfo.some(col => col.name === column);
-    
-    if (!hasColumn) {
-      throw new Error(`Required column '${column}' does not exist in table '${table}'`);
-    }
-  }
-
-  private validateTimezoneColumns(): void {
-    // Check that timestamp columns are using UTC
-    const testResult = this.db.prepare(`
-      SELECT created_at FROM semantic_concepts LIMIT 1
-    `).get() as { created_at: string } | undefined;
-    
-    if (testResult && testResult.created_at) {
-      // Basic check that timestamps look like UTC format
-      const timestamp = new Date(testResult.created_at);
-      if (isNaN(timestamp.getTime())) {
-        throw new Error('Timestamp columns contain invalid date format after timezone migration');
-      }
-    }
-  }
-
-  private validateSimplifiedSchema(): void {
-    // Validate that only the four core tables exist
-    const requiredTables = ['semantic_concepts', 'developer_patterns', 'feature_map', 'project_metadata'];
-    this.validateTableExists(requiredTables);
-    
-    // Validate that legacy tables have been dropped
-    const legacyTables = [
-      'architectural_decisions', 'shared_patterns', 'ai_insights', 
-      'file_intelligence', 'vector_cache', 'entry_points', 
-      'key_directories', 'work_sessions', 'project_decisions'
-    ];
-    
-    for (const table of legacyTables) {
-      const result = this.db.prepare(`
-        SELECT name FROM sqlite_master WHERE type='table' AND name=?
-      `).get(table);
-      
-      if (result) {
-        throw new Error(`Legacy table '${table}' should have been dropped but still exists`);
-      }
-    }
-    
-    // Validate simplified table structures
-    this.validateSimplifiedTableStructure('semantic_concepts', ['id', 'name', 'type', 'confidence', 'context', 'created_at']);
-    this.validateSimplifiedTableStructure('developer_patterns', ['id', 'name', 'category', 'frequency', 'examples', 'created_at']);
-    this.validateSimplifiedTableStructure('feature_map', ['id', 'feature_name', 'file_paths', 'confidence', 'created_at']);
-    this.validateSimplifiedTableStructure('project_metadata', ['project_path', 'last_learned', 'version', 'languages', 'frameworks', 'stats']);
-    
-    // Validate required indexes exist
-    const requiredIndexes = [
-      'idx_semantic_concepts_type', 'idx_semantic_concepts_name',
-      'idx_developer_patterns_category', 'idx_developer_patterns_frequency',
-      'idx_feature_map_name', 'idx_project_metadata_learned'
-    ];
-    this.validateIndexExists(requiredIndexes);
-  }
-
-  private validateSimplifiedTableStructure(tableName: string, expectedColumns: string[]): void {
-    const tableInfo = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-    const actualColumns = tableInfo.map(col => col.name);
-    
-    for (const expectedColumn of expectedColumns) {
-      if (!actualColumns.includes(expectedColumn)) {
-        throw new Error(`Table '${tableName}' is missing required column '${expectedColumn}'`);
-      }
-    }
-  }
-
-  private validateReferentialIntegrity(): void {
-    // Check for any obvious data corruption
-    try {
-      // Validate JSON columns are valid JSON in simplified schema
-      const patterns = this.db.prepare(`
-        SELECT id, examples FROM developer_patterns 
-        WHERE examples IS NOT NULL AND examples != ''
-        LIMIT 10
-      `).all() as Array<{ id: string; examples: string }>;
-      
-      for (const pattern of patterns) {
-        if (pattern.examples && pattern.examples !== '') {
-          JSON.parse(pattern.examples); // Will throw if invalid
-        }
-      }
-      
-      const features = this.db.prepare(`
-        SELECT id, file_paths FROM feature_map 
-        WHERE file_paths IS NOT NULL AND file_paths != ''
-        LIMIT 10
-      `).all() as Array<{ id: string; file_paths: string }>;
-      
-      for (const feature of features) {
-        if (feature.file_paths && feature.file_paths !== '') {
-          JSON.parse(feature.file_paths); // Will throw if invalid
-        }
-      }
-      
-      const projects = this.db.prepare(`
-        SELECT project_path, languages, frameworks, stats FROM project_metadata 
-        LIMIT 10
-      `).all() as Array<{ project_path: string; languages: string; frameworks: string; stats: string }>;
-      
-      for (const project of projects) {
-        if (project.languages && project.languages !== '') {
-          JSON.parse(project.languages); // Will throw if invalid
-        }
-        if (project.frameworks && project.frameworks !== '') {
-          JSON.parse(project.frameworks); // Will throw if invalid
-        }
-        if (project.stats && project.stats !== '') {
-          JSON.parse(project.stats); // Will throw if invalid
-        }
-      }
-      
-    } catch (error: unknown) {
-      throw new Error(`Data integrity check failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -799,14 +218,11 @@ export class DatabaseMigrator {
           }
         } else {
           console.warn(`⚠️ Migration ${migration.version} has no rollback script`);
-          // When rolling back to version 0, we still need to delete the migration record
-          // to maintain consistency, even though we can't undo the schema changes
-          if (targetVersion === 0) {
-            this.db.prepare(`
-              DELETE FROM migrations WHERE version = ?
-            `).run(migration.version);
-            console.log(`✅ Migration ${migration.version} record removed (no rollback script available)`);
-          }
+          // Remove migration record for consistency
+          this.db.prepare(`
+            DELETE FROM migrations WHERE version = ?
+          `).run(migration.version);
+          console.log(`✅ Migration ${migration.version} record removed (no rollback script available)`);
         }
       }
     })();

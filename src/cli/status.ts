@@ -3,7 +3,7 @@
 import { initializeDIContainer } from '../core/bootstrap.js';
 import { Logger } from '../utils/logger.js';
 import { PathValidator } from '../utils/path-validator.js';
-import { LearningStatus, SystemMetrics, IntelligenceMetrics, HealthStatus } from '../core/services/DiagnosticService.js';
+import { translateError, isInMemoriaError } from '../core/errors.js';
 
 /**
  * CLI arguments for the status command
@@ -25,7 +25,12 @@ export interface StatusArgs {
 export async function handleStatusCommand(args: StatusArgs): Promise<void> {
   try {
     // Validate and resolve the project path
-    const projectPath = PathValidator.validateProjectPath(args.path, 'status command');
+    let projectPath: string;
+    try {
+      projectPath = PathValidator.validateProjectPath(args.path, 'status command');
+    } catch (error) {
+      throw translateError(error, 'Path validation');
+    }
     
     // Initialize DI Container with project path
     const container = await initializeDIContainer({ projectPath });
@@ -34,9 +39,9 @@ export async function handleStatusCommand(args: StatusArgs): Promise<void> {
     const learningStatus = await container.diagnosticService.getLearningStatus(projectPath);
     
     // Get additional metrics if requested
-    let systemMetrics: SystemMetrics | undefined;
-    let intelligenceMetrics: IntelligenceMetrics | undefined;
-    let healthStatus: HealthStatus | undefined;
+    let systemMetrics: any | undefined;
+    let intelligenceMetrics: any | undefined;
+    let healthStatus: any | undefined;
     
     if (args.system || args.verbose) {
       systemMetrics = await container.diagnosticService.getSystemMetrics();
@@ -65,8 +70,9 @@ export async function handleStatusCommand(args: StatusArgs): Promise<void> {
     }
     
   } catch (error) {
-    Logger.error('Status command failed:', error);
-    console.error(`❌ Status check failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const standardizedError = translateError(error, 'Status command');
+    Logger.error('Status command failed:', standardizedError);
+    console.error(`❌ Status check failed [${standardizedError.code}]: ${standardizedError.message}`);
     process.exit(1);
   }
 }
@@ -77,10 +83,10 @@ export async function handleStatusCommand(args: StatusArgs): Promise<void> {
  * @param data - Status data from services
  */
 function formatStatusResult(data: {
-  learningStatus: LearningStatus;
-  systemMetrics?: SystemMetrics;
-  intelligenceMetrics?: IntelligenceMetrics;
-  healthStatus?: HealthStatus;
+  learningStatus: any;
+  systemMetrics?: any;
+  intelligenceMetrics?: any;
+  healthStatus?: any;
   verbose?: boolean;
 }): void {
   console.log(`\nIn-Memoria Status for: ${data.learningStatus.projectPath}`);

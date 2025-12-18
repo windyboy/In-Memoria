@@ -1,21 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SurrealVectorDB } from '../vector-db.js';
-import { QdrantVectorDB } from '../qdrant-vector-db.js';
+// QdrantVectorDB removed in Phase 3 - only SurrealDB backend supported per requirement 6.1
 import { VectorStore, BackendInfo, HealthStatus, PerformanceMetrics } from '../vector-store.js';
 
 describe('Enhanced VectorStore Interface', () => {
   let surrealStore: VectorStore;
-  let qdrantStore: VectorStore;
 
   beforeEach(async () => {
     // Create instances without initializing to test interface methods
     surrealStore = new SurrealVectorDB();
-    qdrantStore = new QdrantVectorDB();
   });
 
   afterEach(async () => {
     await surrealStore.close();
-    await qdrantStore.close();
   });
 
   describe('getBackendInfo()', () => {
@@ -34,30 +31,7 @@ describe('Enhanced VectorStore Interface', () => {
       expect(info.metadata).toBeDefined();
     });
 
-    it('should return backend info for Qdrant', () => {
-      const info: BackendInfo = qdrantStore.getBackendInfo();
-      
-      expect(info.type).toBe('qdrant');
-      expect(info.version).toBeDefined();
-      expect(info.capabilities).toBeDefined();
-      expect(info.capabilities.supportsBatchOperations).toBe(true);
-      expect(info.capabilities.supportsFiltering).toBe(true);
-      expect(info.capabilities.supportsMetadataSearch).toBe(true);
-      expect(info.capabilities.maxEmbeddingDimension).toBeGreaterThan(0);
-      expect(Array.isArray(info.capabilities.supportedDistanceMetrics)).toBe(true);
-      expect(info.connectionStatus).toMatch(/^(connected|disconnected|error)$/);
-      expect(info.metadata).toBeDefined();
-    });
-
-    it('should show different capabilities between backends', () => {
-      const surrealInfo = surrealStore.getBackendInfo();
-      const qdrantInfo = qdrantStore.getBackendInfo();
-      
-      expect(surrealInfo.type).not.toBe(qdrantInfo.type);
-      expect(surrealInfo.capabilities.maxEmbeddingDimension).not.toBe(
-        qdrantInfo.capabilities.maxEmbeddingDimension
-      );
-    });
+    // Qdrant tests removed - only SurrealDB supported per requirement 6.1
   });
 
   describe('getHealthStatus()', () => {
@@ -71,22 +45,9 @@ describe('Enhanced VectorStore Interface', () => {
       expect(health.details).toBeDefined();
     });
 
-    it('should return health status for Qdrant', async () => {
-      const health: HealthStatus = await qdrantStore.getHealthStatus();
-      
-      expect(health.status).toMatch(/^(healthy|degraded|unhealthy)$/);
-      expect(health.lastChecked).toBeInstanceOf(Date);
-      expect(typeof health.responseTime).toBe('number');
-      expect(health.responseTime).toBeGreaterThanOrEqual(0);
-      expect(health.details).toBeDefined();
-    });
-
     it('should report unhealthy status when not initialized', async () => {
       const surrealHealth = await surrealStore.getHealthStatus();
-      const qdrantHealth = await qdrantStore.getHealthStatus();
-      
       expect(surrealHealth.status).toBe('unhealthy');
-      expect(qdrantHealth.status).toBe('unhealthy');
     });
   });
 
@@ -106,29 +67,7 @@ describe('Enhanced VectorStore Interface', () => {
       expect(metrics.memoryUsage).toBeGreaterThanOrEqual(0);
     });
 
-    it('should return performance metrics for Qdrant', async () => {
-      const metrics: PerformanceMetrics = await qdrantStore.getPerformanceMetrics();
-      
-      expect(metrics.operationCounts).toBeDefined();
-      expect(typeof metrics.operationCounts).toBe('object');
-      expect(metrics.averageResponseTimes).toBeDefined();
-      expect(typeof metrics.averageResponseTimes).toBe('object');
-      expect(metrics.errorRates).toBeDefined();
-      expect(typeof metrics.errorRates).toBe('object');
-      expect(metrics.cacheHitRates).toBeDefined();
-      expect(typeof metrics.cacheHitRates).toBe('object');
-      expect(typeof metrics.memoryUsage).toBe('number');
-      expect(metrics.memoryUsage).toBeGreaterThanOrEqual(0);
-    });
-
-    it('should include Qdrant-specific metrics', async () => {
-      const metrics = await qdrantStore.getPerformanceMetrics();
-      
-      // Qdrant should have additional operation types
-      expect(metrics.operationCounts).toHaveProperty('qdrantUpsert');
-      expect(metrics.operationCounts).toHaveProperty('qdrantSearch');
-      expect(metrics.operationCounts).toHaveProperty('qdrantScroll');
-    });
+    // Qdrant tests removed - only SurrealDB supported per requirement 6.1
   });
 
   describe('Interface Compliance', () => {
@@ -153,8 +92,8 @@ describe('Enhanced VectorStore Interface', () => {
       expect(typeof surrealStore.getPerformanceMetrics).toBe('function');
     });
 
-    it('should have identical interface methods across backends', () => {
-      // Both should implement the VectorStore interface methods
+    it('should implement all VectorStore interface methods', () => {
+      // SurrealDB should implement the VectorStore interface methods
       const requiredMethods = [
         'initialize',
         'verifyEmbeddingModel',
@@ -175,7 +114,6 @@ describe('Enhanced VectorStore Interface', () => {
       
       for (const method of requiredMethods) {
         expect(typeof (surrealStore as any)[method]).toBe('function');
-        expect(typeof (qdrantStore as any)[method]).toBe('function');
       }
     });
   });

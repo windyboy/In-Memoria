@@ -1,6 +1,31 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SearchServiceImpl } from '../services/SearchService.js';
-import { SearchEngine, SearchQuery, SearchResponse } from '../../engines/search-engine.js';
+// SearchEngine import removed - legacy module deleted in Phase 3
+// Define minimal interfaces for testing
+interface SearchQuery {
+  query: string;
+  type: string;
+  language?: string;
+  limit?: number;
+}
+
+interface SearchResult {
+  file: string;
+  content: string;
+  score: number;
+  context: string;
+  metadata: Record<string, any>;
+}
+
+interface SearchResponse {
+  results: SearchResult[];
+  totalFound: number;
+  searchType: string;
+}
+
+interface SearchEngine {
+  search(query: SearchQuery): Promise<SearchResponse>;
+}
 
 describe('SearchService', () => {
   let searchService: SearchServiceImpl;
@@ -64,9 +89,15 @@ describe('SearchService', () => {
     });
 
     it('should validate search query input', async () => {
-      await expect(searchService.searchSemantic('')).rejects.toThrow('Invalid search query');
-      await expect(searchService.searchSemantic('   ')).rejects.toThrow('Invalid search query');
-      await expect(searchService.searchSemantic('a'.repeat(1001))).rejects.toThrow('Invalid search query');
+      await expect(searchService.searchSemantic('')).rejects.toThrow(
+        'Validation failed: Query must be a non-empty string',
+      );
+      await expect(searchService.searchSemantic('   ')).rejects.toThrow(
+        'Validation failed: Query cannot be empty or whitespace only',
+      );
+      await expect(searchService.searchSemantic('a'.repeat(1001))).rejects.toThrow(
+        'Validation failed: Query too long (max 1000 characters)',
+      );
     });
   });
 
@@ -203,9 +234,9 @@ describe('SearchService', () => {
       const error = new Error('Search engine failed');
       (mockSearchEngine.search as any).mockRejectedValue(error);
 
-      await expect(searchService.searchSemantic('test')).rejects.toThrow('Semantic search failed: Search engine failed');
-      await expect(searchService.searchPatterns('test')).rejects.toThrow('Pattern search failed: Search engine failed');
-      await expect(searchService.searchText('test')).rejects.toThrow('Text search failed: Search engine failed');
+      await expect(searchService.searchSemantic('test')).rejects.toThrow('Search failed: Semantic search: Search engine failed');
+      await expect(searchService.searchPatterns('test')).rejects.toThrow('Search failed: Pattern search: Search engine failed');
+      await expect(searchService.searchText('test')).rejects.toThrow('Search failed: Text search: Search engine failed');
     });
   });
 });

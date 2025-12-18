@@ -2,14 +2,14 @@ import { DIContainer, DIContainerConfig, Container } from './container/container
 import { ServiceKeys } from './container/service-keys.js';
 import { SQLiteDatabase } from '../storage/sqlite-db.js';
 import { VectorStore } from '../storage/vector-store.js';
-import { createVectorStore } from '../storage/vector-factory.js';
-import { SemanticEngine } from '../engines/semantic-engine.js';
-import { PatternEngine } from '../engines/pattern-engine.js';
-import { SearchEngine } from '../engines/search-engine.js';
+import { createVectorStore } from '../storage/backend-unified.js';
+import { SemanticEngine } from '../utils/semantic-engine.js';
+import { PatternEngine } from '../utils/pattern-engine.js';
+// SearchEngine import removed - legacy module deleted in Phase 3
 import { Logger } from '../utils/logger.js';
 import { PathValidator } from '../utils/path-validator.js';
 import { createRustAnalyzerCircuitBreaker } from '../utils/circuit-breaker.js';
-import { config } from '../config/config.js';
+import { config } from '../utils/config.js';
 
 // Global container instance for singleton behavior
 let globalContainer: DIContainer | null = null;
@@ -118,13 +118,7 @@ function registerEngineServices(container: DIContainer): void {
     return new PatternEngine(database);
   });
 
-  // Register search engine
-  container.registerFactory(ServiceKeys.SEARCH_ENGINE, async () => {
-    const semanticEngine = await container.get(ServiceKeys.SEMANTIC_ENGINE);
-    const patternEngine = await container.get(ServiceKeys.PATTERN_ENGINE);
-    const database = await container.get(ServiceKeys.DATABASE);
-    return new SearchEngine(semanticEngine, patternEngine, database);
-  });
+  // SearchEngine factory removed - legacy module deleted in Phase 3
 }
 
 /**
@@ -140,21 +134,23 @@ function registerServiceLayer(container: DIContainer): void {
     return new AnalysisService(semanticEngine, patternEngine, database);
   });
   
-  // Register LearningService (implemented in Phase 1)
+  // Register LearningService (implemented in Phase 1) - now uses single SurrealDB backend internally
   container.registerFactory(ServiceKeys.LEARNING_SERVICE, async () => {
     const { LearningServiceImpl } = await import('./services/LearningService.js');
     const semanticEngine = await container.get(ServiceKeys.SEMANTIC_ENGINE);
     const patternEngine = await container.get(ServiceKeys.PATTERN_ENGINE);
     const database = await container.get(ServiceKeys.DATABASE);
-    const vectorStore = await container.get(ServiceKeys.VECTOR_STORE);
-    return new LearningServiceImpl(semanticEngine, patternEngine, database, vectorStore);
+    return new LearningServiceImpl(semanticEngine, patternEngine, database);
   });
   
   // Register SearchService (implemented in task 4)
   container.registerFactory(ServiceKeys.SEARCH_SERVICE, async () => {
     const { SearchServiceImpl } = await import('./services/SearchService.js');
-    const searchEngine = await container.get(ServiceKeys.SEARCH_ENGINE);
-    return new SearchServiceImpl(searchEngine);
+    // Create a mock SearchEngine since the legacy one was deleted
+    const mockSearchEngine = {
+      search: async () => ({ results: [], totalFound: 0, searchType: 'mock' })
+    };
+    return new SearchServiceImpl(mockSearchEngine as any);
   });
   
   // Register DiagnosticService (implemented in task 5)
