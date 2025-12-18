@@ -96,14 +96,17 @@ describe('Schema Migration', () => {
         confidence: 0.9
       });
       
-      const patterns = db.prepare('SELECT * FROM developer_patterns').all();
+      const patterns = db.prepare('SELECT * FROM developer_patterns').all() as any[];
       expect(patterns).toHaveLength(1);
       expect(patterns[0]).toMatchObject({
         id: 'pattern-1',
-        name: 'architecture',
         category: 'architecture',
         frequency: 5
       });
+
+      // The simplified schema stores pattern content as JSON in the name column
+      const patternContent = JSON.parse(String(patterns[0].name || '{}'));
+      expect(patternContent).toMatchObject({ name: 'Repository Pattern' });
       
       const features = db.prepare('SELECT * FROM feature_map').all();
       expect(features).toHaveLength(1);

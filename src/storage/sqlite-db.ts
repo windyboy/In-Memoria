@@ -580,7 +580,9 @@ export class SQLiteDatabase {
       languagesDetected: JSON.parse(row.languages_detected || '[]'),
       frameworkDetected: JSON.parse(row.framework_detected || '[]'),
       intelligenceVersion: row.intelligence_version,
-      lastFullScan: row.last_full_scan ? new Date(row.last_full_scan + ' UTC') : undefined,
+      // last_full_scan is stored as an ISO timestamp string via insertProjectMetadata,
+      // so we should parse it directly rather than appending an extra timezone suffix.
+      lastFullScan: row.last_full_scan ? new Date(row.last_full_scan) : undefined,
       createdAt: new Date(row.created_at + ' UTC'),
       updatedAt: new Date(row.updated_at + ' UTC')
     };

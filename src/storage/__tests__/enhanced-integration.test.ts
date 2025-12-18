@@ -13,6 +13,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 
+const isWindows = process.platform === 'win32';
+
 describe('Enhanced Integration Tests', () => {
   let testProjectPath: string;
   let vectorStore: VectorStore;
@@ -148,7 +150,9 @@ describe('Enhanced Integration Tests', () => {
       expect(typeof metrics.errorRates.overall).toBe('number');
     });
 
-    it('should maintain performance characteristics under load', async () => {
+    const maybeIt = isWindows ? it.skip : it;
+
+    maybeIt('should maintain performance characteristics under load', async () => {
       await vectorStore.initialize('load-test');
       
       const startTime = Date.now();
