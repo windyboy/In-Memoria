@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use regex::Regex;
 use walkdir::WalkDir;
 use std::fs;
+use std::path::Path;
 
 /// Analyzer for detecting implementation patterns (design patterns)
 #[cfg_attr(feature = "napi-bindings", napi)]
@@ -264,14 +265,41 @@ impl ImplementationPatternAnalyzer {
 
     /// Analyze code files for pattern signatures
     pub fn analyze_code_files(&mut self, path: &str) -> Result<Vec<Pattern>, ParseError> {
+        const MAX_DEPTH: usize = 5;
+        const MAX_FILES: usize = 200;
+        const MAX_FILE_SIZE: u64 = 1_000_000; // 1MB
+        const TIMEOUT_SECS: u64 = 60;
+
         let mut detected_patterns = Vec::new();
-        
-        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+        let mut file_count = 0;
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(TIMEOUT_SECS);
+
+        for entry in WalkDir::new(path)
+            .max_depth(MAX_DEPTH)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if start_time.elapsed() > timeout || file_count >= MAX_FILES {
+                break;
+            }
+
             if entry.file_type().is_file() {
                 let file_path = entry.path();
+                if !self.should_analyze_file(file_path) {
+                    continue;
+                }
+
+                if let Ok(metadata) = fs::metadata(file_path) {
+                    if metadata.len() > MAX_FILE_SIZE {
+                        continue;
+                    }
+                }
+
                 if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
                     if matches!(extension.to_lowercase().as_str(), "js" | "ts" | "jsx" | "tsx" | "rs" | "py" | "java" | "cs" | "cpp" | "c") {
                         if let Ok(content) = fs::read_to_string(file_path) {
+                            file_count += 1;
                             let patterns = self.detect_patterns_in_code(&content, file_path.to_string_lossy().as_ref())?;
                             detected_patterns.extend(patterns);
                         }
@@ -279,7 +307,7 @@ impl ImplementationPatternAnalyzer {
                 }
             }
         }
-        
+
         Ok(detected_patterns)
     }
 
@@ -341,15 +369,49 @@ impl ImplementationPatternAnalyzer {
         Ok(pattern_matches)
     }
 
+    /// Check if a file should be analyzed
+    fn should_analyze_file(&self, file_path: &Path) -> bool {
+        // Skip common non-source directories
+        let path_str = file_path.to_string_lossy();
+        if path_str.contains("node_modules")
+            || path_str.contains(".git")
+            || path_str.contains("target")
+            || path_str.contains("dist")
+            || path_str.contains("build")
+            || path_str.contains(".next")
+            || path_str.contains("__pycache__")
+            || path_str.contains("coverage")
+            || path_str.contains(".vscode")
+            || path_str.contains(".idea")
+        {
+            return false;
+        }
+
+        // Check if file extension is supported
+        if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
+            self.is_supported_extension(extension)
+        } else {
+            false
+        }
+    }
+
+    /// Check if file extension is supported
+    fn is_supported_extension(&self, extension: &str) -> bool {
+        matches!(
+            extension.to_lowercase().as_str(),
+            "js" | "jsx" | "ts" | "tsx" | "rs" | "py" | "java" | "cpp" | "c" | "cs"
+        )
+    }
+
     /// Detect patterns in code using regex patterns
     fn detect_patterns_in_code(&self, code: &str, file_path: &str) -> Result<Vec<Pattern>, ParseError> {
         let mut detected_patterns = Vec::new();
-        
+
         for (pattern_name, signature) in &self.pattern_signatures {
             let mut evidence = Vec::new();
             let mut confidence = 0.0;
-            
-            // Check code patterns using regex
+
+            // Check code patterns using regex (less efficient - compiles each time)
             for code_pattern in &signature.code_patterns {
                 if let Ok(regex) = Regex::new(code_pattern) {
                     let matches: Vec<_> = regex.find_iter(code).collect();
@@ -359,7 +421,7 @@ impl ImplementationPatternAnalyzer {
                     }
                 }
             }
-            
+
             // Check for method names in the code
             for method in &signature.required_methods {
                 if code.contains(method) {
@@ -367,14 +429,14 @@ impl ImplementationPatternAnalyzer {
                     confidence += 0.2;
                 }
             }
-            
+
             if confidence >= signature.confidence_threshold && !evidence.is_empty() {
                 let examples = vec![PatternExample {
                     code: evidence.join(", "),
                     file_path: file_path.to_string(),
                     line_range: LineRange { start: 1, end: 1 },
                 }];
-                
+
                 detected_patterns.push(Pattern {
                     id: format!("implementation_{}", pattern_name.to_lowercase()),
                     pattern_type: "implementation".to_string(),
@@ -386,7 +448,7 @@ impl ImplementationPatternAnalyzer {
                 });
             }
         }
-        
+
         Ok(detected_patterns)
     }
 

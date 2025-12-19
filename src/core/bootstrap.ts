@@ -5,7 +5,6 @@ import { VectorStore } from '../storage/vector-store.js';
 import { createVectorStore } from '../storage/backend-unified.js';
 import { SemanticEngine } from '../utils/semantic-engine.js';
 import { PatternEngine } from '../utils/pattern-engine.js';
-// SearchEngine import removed - legacy module deleted in Phase 3
 import { Logger } from '../utils/logger.js';
 import { PathValidator } from '../utils/path-validator.js';
 import { createRustAnalyzerCircuitBreaker } from '../utils/circuit-breaker.js';
@@ -117,8 +116,6 @@ function registerEngineServices(container: DIContainer): void {
     const database = await container.get(ServiceKeys.DATABASE);
     return new PatternEngine(database);
   });
-
-  // SearchEngine factory removed - legacy module deleted in Phase 3
 }
 
 /**

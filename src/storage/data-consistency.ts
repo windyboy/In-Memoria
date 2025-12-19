@@ -15,7 +15,6 @@ import {
   DataFormatSpec,
   MigrationContext
 } from './data-integrity.js';
-// DataMigrationManager and related imports removed in Phase 3 - data migration functionality consolidated
 import { Logger } from '../utils/logger.js';
 import { ValidationError, OperationError } from './vector-errors.js';
 
@@ -77,12 +76,10 @@ export interface ConsistencyRepairResult {
 export class DataConsistencyManager {
   private validator: DataIntegrityValidator;
   private relationshipManager: SemanticRelationshipManager;
-  // migrationManager removed in Phase 3 - data migration functionality consolidated
 
   constructor(embeddingConfig: EmbeddingConfig) {
     this.validator = new DataIntegrityValidator(embeddingConfig);
     this.relationshipManager = new SemanticRelationshipManager();
-    // DataMigrationManager removed in Phase 3 - data migration functionality consolidated
 
     Logger.info('Data consistency manager initialized');
   }
@@ -401,44 +398,6 @@ export class DataConsistencyManager {
       throw new OperationError(
         `Consistency repair failed: ${error instanceof Error ? error.message : String(error)}`
       );
-    }
-  }
-
-  /**
-   * Migrate data between backends with full consistency checks
-   */
-  async migrateWithConsistencyChecks(
-    sourceBackend: VectorStore,
-    targetBackend: VectorStore,
-    context: MigrationContext
-  ): Promise<any> {
-    Logger.info('Starting migration with consistency checks');
-
-    try {
-      // Migration functionality removed in Phase 3 - data migration consolidated
-      throw new Error('Migration functionality removed in Phase 3 - data migration consolidated per requirement 6.1');
-
-      // Perform consistency check on source data
-      const sourceConsistency = await this.performConsistencyCheck(sourceBackend);
-      if (!sourceConsistency.consistent) {
-        Logger.warn(`Source data has ${sourceConsistency.issues.length} consistency issues`);
-        
-        // Optionally repair source issues before migration
-        const errorIssues = sourceConsistency.issues.filter(issue => issue.severity === 'error');
-        if (errorIssues.length > 0) {
-          Logger.warn('Source data has critical consistency issues that may affect migration');
-        }
-      }
-
-      // Migration functionality removed in Phase 3 - data migration consolidated
-      throw new Error('Migration functionality removed in Phase 3 - data migration consolidated per requirement 6.1');
-
-      // Migration functionality removed - return error
-      return { success: false, errors: ['Migration functionality removed in Phase 3'] };
-
-    } catch (error) {
-      Logger.error('Migration with consistency checks failed:', error);
-      throw error;
     }
   }
 

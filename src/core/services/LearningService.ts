@@ -1,6 +1,6 @@
 import { SemanticEngine } from '../../utils/semantic-engine.js';
 import { PatternEngine } from '../../utils/pattern-engine.js';
-import { SQLiteDatabase } from '../../storage/sqlite-db.js';
+import { SQLiteDatabase, SemanticConcept as DBSemanticConcept } from '../../storage/sqlite-db.js';
 import { VectorStore } from '../../storage/vector-store.js';
 import { createVectorStore } from '../../storage/backend-unified.js';
 import { ProgressTracker } from '../../utils/progress-tracker.js';
@@ -27,6 +27,7 @@ export interface LearningResult {
   success: boolean;
   conceptsLearned: number;
   patternsDiscovered: number;
+  featuresLearned: number;
   duration: number;
   errors: string[];
 }
@@ -199,6 +200,7 @@ class LearningServiceImpl implements LearningService {
     const errors: string[] = [];
     let conceptsLearned = 0;
     let patternsDiscovered = 0;
+    let featuresLearned = 0;
     let isIdempotentUpdate = false;
 
     // Set up SIGINT handler for graceful shutdown
@@ -238,11 +240,13 @@ class LearningServiceImpl implements LearningService {
         // Get existing counts for response
         const existingConcepts = this.database.getSemanticConcepts().length;
         const existingPatterns = this.database.getDeveloperPatterns().length;
+        const existingFeatures = this.database.getFeatureMaps(projectPath).length;
         
         return {
           success: true,
           conceptsLearned: existingConcepts,
           patternsDiscovered: existingPatterns,
+          featuresLearned: existingFeatures,
           duration: Date.now() - startTime,
           errors: ['Idempotent update: timestamp updated, no data duplication']
         };
@@ -329,9 +333,28 @@ class LearningServiceImpl implements LearningService {
       this.progressTracker.updateProgress('pattern_discovery', 100, `Stored ${patternsDiscovered} patterns`);
       Logger.info(`Pattern discovery complete. Discovered ${patternsDiscovered} patterns`);
 
-      // Phase 3: Vector Indexing
+      // Phase 3: Feature Extraction
+      this.progressTracker.startPhase('feature_extraction');
+      Logger.info('Phase 3: Starting feature extraction...');
+      
+      // Report progress to ProgressController for CLI and MCP integration
+      if (options.progressCallback) {
+        options.progressCallback(0, 100, 'Starting feature extraction');
+      }
+      
+      const featureMaps = await this.patternEngine.buildFeatureMap(projectPath);
+      this.progressTracker.updateProgress('feature_extraction', 50, 'Feature extraction complete');
+      
+      // Store feature maps with idempotent behavior (single writer)
+      await this.storeFeatureMapsInternal(projectPath, featureMaps);
+      featuresLearned = featureMaps.length;
+      
+      this.progressTracker.updateProgress('feature_extraction', 100, `Stored ${featuresLearned} features`);
+      Logger.info(`Feature extraction complete. Discovered ${featuresLearned} features`);
+
+      // Phase 4: Vector Indexing
       this.progressTracker.startPhase('vector_indexing');
-      Logger.info('Phase 3: Building vector index...');
+      Logger.info('Phase 4: Building vector index...');
       
       // Report progress to ProgressController for CLI and MCP integration
       if (options.progressCallback) {
@@ -343,9 +366,9 @@ class LearningServiceImpl implements LearningService {
       this.progressTracker.updateProgress('vector_indexing', 100, 'Vector index complete');
       Logger.info('Vector indexing complete');
 
-      // Phase 4: Metadata Storage
+      // Phase 5: Metadata Storage
       this.progressTracker.startPhase('metadata_storage');
-      Logger.info('Phase 4: Storing project metadata...');
+      Logger.info('Phase 5: Storing project metadata...');
       
       // Report progress to ProgressController for CLI and MCP integration
       if (options.progressCallback) {
@@ -375,6 +398,7 @@ class LearningServiceImpl implements LearningService {
         success: true,
         conceptsLearned,
         patternsDiscovered,
+        featuresLearned,
         duration,
         errors
       };
@@ -388,6 +412,7 @@ class LearningServiceImpl implements LearningService {
         success: false,
         conceptsLearned,
         patternsDiscovered,
+        featuresLearned,
         duration: Date.now() - startTime,
         errors
       };
@@ -499,13 +524,23 @@ class LearningServiceImpl implements LearningService {
   private async storeSemanticConceptsInternal(concepts: any[]): Promise<void> {
     for (const concept of concepts) {
       // Check if concept already exists to maintain idempotency
-      const existingConcepts = this.database.getSemanticConcepts(concept.filePath);
+      // If context column doesn't exist, getSemanticConcepts will return all concepts
+      // We'll filter by ID instead
+      let existingConcepts: DBSemanticConcept[];
+      try {
+        existingConcepts = this.database.getSemanticConcepts(concept.filePath);
+      } catch (error) {
+        // Fallback: get all concepts and filter by ID
+        Logger.debug('Could not filter by filePath, using ID-based lookup');
+        existingConcepts = this.database.getSemanticConcepts();
+      }
+      
       const existingConcept = existingConcepts.find(c => c.id === concept.id);
       
       if (existingConcept) {
-        // Update only if confidence score has improved or context has changed
+        // Update only if confidence score has improved or file path has changed
         if (concept.confidenceScore > existingConcept.confidenceScore || 
-            concept.context !== existingConcept.filePath) {
+            concept.filePath !== existingConcept.filePath) {
           Logger.debug(`Updating existing concept: ${concept.id}`);
           this.database.insertSemanticConcept({
             ...concept,
@@ -517,6 +552,49 @@ class LearningServiceImpl implements LearningService {
       } else {
         // Insert new concept
         this.database.insertSemanticConcept(concept);
+      }
+    }
+  }
+
+  /**
+   * Internal method to store feature maps (single writer)
+   * Uses INSERT OR REPLACE to ensure idempotent behavior
+   */
+  private async storeFeatureMapsInternal(projectPath: string, featureMaps: Array<{
+    id: string;
+    featureName: string;
+    primaryFiles: string[];
+    relatedFiles: string[];
+    dependencies: string[];
+  }>): Promise<void> {
+    for (const featureMap of featureMaps) {
+      // Check if feature map already exists to maintain idempotency
+      const existingFeatures = this.database.getFeatureMaps(projectPath);
+      const existingFeature = existingFeatures.find(f => f.id === featureMap.id || f.featureName === featureMap.featureName);
+      
+      if (existingFeature) {
+        // Update existing feature map
+        Logger.debug(`Updating existing feature map: ${featureMap.featureName}`);
+        this.database.insertFeatureMap({
+          id: existingFeature.id,
+          projectPath,
+          featureName: featureMap.featureName,
+          primaryFiles: featureMap.primaryFiles,
+          relatedFiles: featureMap.relatedFiles,
+          dependencies: featureMap.dependencies,
+          status: 'active'
+        });
+      } else {
+        // Insert new feature map
+        this.database.insertFeatureMap({
+          id: featureMap.id,
+          projectPath,
+          featureName: featureMap.featureName,
+          primaryFiles: featureMap.primaryFiles,
+          relatedFiles: featureMap.relatedFiles,
+          dependencies: featureMap.dependencies,
+          status: 'active'
+        });
       }
     }
   }
@@ -783,6 +861,7 @@ class LearningServiceImpl implements LearningService {
 
     this.progressTracker.addPhase('semantic_analysis', 100, 3);
     this.progressTracker.addPhase('pattern_discovery', 100, 3);
+    this.progressTracker.addPhase('feature_extraction', 100, 2);
     this.progressTracker.addPhase('vector_indexing', 100, 2);
     this.progressTracker.addPhase('metadata_storage', 100, 1);
   }
@@ -851,6 +930,7 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Store AI insights (single writer principle)
+   * Note: ai_insights table was dropped in migration 8, this method now logs a warning and does nothing
    */
   async storeAIInsight(insight: {
     insightId: string;
@@ -862,9 +942,8 @@ class LearningServiceImpl implements LearningService {
     impactPrediction: any;
   }): Promise<void> {
     try {
-      Logger.info(`Storing AI insight: ${insight.insightId}`);
-      
-      // Store AI insight using database (single writer)
+      Logger.warn(`storeAIInsight called but ai_insights table was dropped in migration 8. Operation ignored for: ${insight.insightId}`);
+      // Database method is stubbed and will log warning, but we complete successfully
       this.database.insertAIInsight({
         insightId: insight.insightId,
         insightType: insight.insightType,
@@ -874,8 +953,6 @@ class LearningServiceImpl implements LearningService {
         validationStatus: insight.validationStatus,
         impactPrediction: insight.impactPrediction
       });
-      
-      Logger.info('AI insight stored successfully');
     } catch (error) {
       Logger.error('Failed to store AI insight:', error);
       throw translateError(error, 'AI insight storage');
@@ -884,6 +961,7 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Create or update work session (single writer principle)
+   * Note: work_sessions table was dropped in migration 8, this method now logs a warning and does nothing
    */
   async createWorkSession(session: {
     id: string;
@@ -895,12 +973,9 @@ class LearningServiceImpl implements LearningService {
     lastFeature?: string;
   }): Promise<void> {
     try {
-      Logger.info(`Creating work session: ${session.id}`);
-      
-      // Create work session using database (single writer)
+      Logger.warn(`createWorkSession called but work_sessions table was dropped in migration 8. Operation ignored for: ${session.id}`);
+      // Database method is stubbed and will log warning, but we complete successfully
       this.database.createWorkSession(session);
-      
-      Logger.info('Work session created successfully');
     } catch (error) {
       Logger.error('Failed to create work session:', error);
       throw translateError(error, 'Work session creation');
@@ -909,6 +984,7 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Update work session (single writer principle)
+   * Note: work_sessions table was dropped in migration 8, this method now logs a warning and does nothing
    */
   async updateWorkSession(sessionId: string, updates: {
     currentFiles?: string[];
@@ -916,12 +992,9 @@ class LearningServiceImpl implements LearningService {
     pendingTasks?: string[];
   }): Promise<void> {
     try {
-      Logger.info(`Updating work session: ${sessionId}`);
-      
-      // Update work session using database (single writer)
+      Logger.warn(`updateWorkSession called but work_sessions table was dropped in migration 8. Operation ignored for: ${sessionId}`);
+      // Database method is stubbed and will log warning, but we complete successfully
       this.database.updateWorkSession(sessionId, updates);
-      
-      Logger.info('Work session updated successfully');
     } catch (error) {
       Logger.error('Failed to update work session:', error);
       throw translateError(error, 'Work session update');
@@ -930,6 +1003,7 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Store project decision (single writer principle)
+   * Note: project_decisions table was dropped in migration 8, this method now logs a warning and does nothing
    */
   async storeProjectDecision(decision: {
     id: string;
@@ -939,9 +1013,8 @@ class LearningServiceImpl implements LearningService {
     reasoning?: string;
   }): Promise<void> {
     try {
-      Logger.info(`Storing project decision: ${decision.decisionKey}`);
-      
-      // Store project decision using database (single writer)
+      Logger.warn(`storeProjectDecision called but project_decisions table was dropped in migration 8. Operation ignored for: ${decision.decisionKey}`);
+      // Database method is stubbed and will log warning, but we complete successfully
       this.database.upsertProjectDecision({
         id: decision.id,
         projectPath: decision.projectPath,
@@ -949,8 +1022,6 @@ class LearningServiceImpl implements LearningService {
         decisionValue: decision.decisionValue,
         reasoning: decision.reasoning
       });
-      
-      Logger.info('Project decision stored successfully');
     } catch (error) {
       Logger.error('Failed to store project decision:', error);
       throw translateError(error, 'Project decision storage');
@@ -959,6 +1030,7 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Store entry point (single writer principle)
+   * Note: entry_points table was dropped in migration 8, this method now logs a warning and does nothing
    */
   async storeEntryPoint(entryPoint: {
     id: string;
@@ -969,12 +1041,9 @@ class LearningServiceImpl implements LearningService {
     framework?: string;
   }): Promise<void> {
     try {
-      Logger.info(`Storing entry point: ${entryPoint.filePath}`);
-      
-      // Store entry point using database (single writer)
+      Logger.warn(`storeEntryPoint called but entry_points table was dropped in migration 8. Operation ignored for: ${entryPoint.filePath}`);
+      // Database method is stubbed and will log warning, but we complete successfully
       this.database.insertEntryPoint(entryPoint);
-      
-      Logger.info('Entry point stored successfully');
     } catch (error) {
       Logger.error('Failed to store entry point:', error);
       throw translateError(error, 'Entry point storage');
@@ -983,6 +1052,7 @@ class LearningServiceImpl implements LearningService {
 
   /**
    * Store key directory (single writer principle)
+   * Note: key_directories table was dropped in migration 8, this method now logs a warning and does nothing
    */
   async storeKeyDirectory(directory: {
     id: string;
@@ -993,12 +1063,9 @@ class LearningServiceImpl implements LearningService {
     description?: string;
   }): Promise<void> {
     try {
-      Logger.info(`Storing key directory: ${directory.directoryPath}`);
-      
-      // Store key directory using database (single writer)
+      Logger.warn(`storeKeyDirectory called but key_directories table was dropped in migration 8. Operation ignored for: ${directory.directoryPath}`);
+      // Database method is stubbed and will log warning, but we complete successfully
       this.database.insertKeyDirectory(directory);
-      
-      Logger.info('Key directory stored successfully');
     } catch (error) {
       Logger.error('Failed to store key directory:', error);
       throw translateError(error, 'Key directory storage');

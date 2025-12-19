@@ -60,18 +60,50 @@ impl PatternLearner {
     /// and pattern analysis that are inherently safe but marked unsafe for JavaScript interop.
     #[cfg_attr(feature = "napi-bindings", napi)]
     pub async unsafe fn extract_patterns(&self, path: String) -> Result<Vec<Pattern>, crate::types::ParseError> {
-        // Use the learning engine to extract patterns
-        let naming_analyzer = NamingPatternAnalyzer::new();
-        let structural_analyzer = StructuralPatternAnalyzer::new();
-        let implementation_analyzer = ImplementationPatternAnalyzer::new();
-        
+        // Use spawn_blocking to avoid blocking the async runtime
+        let path_clone = path.clone();
+        let naming_task = tokio::task::spawn_blocking(move || {
+            let analyzer = NamingPatternAnalyzer::new();
+            analyzer.extract_patterns(&path_clone)
+        });
+
+        let path_clone = path.clone();
+        let structural_task = tokio::task::spawn_blocking(move || {
+            let analyzer = StructuralPatternAnalyzer::new();
+            analyzer.extract_patterns(&path_clone)
+        });
+
+        let path_clone = path.clone();
+        let implementation_task = tokio::task::spawn_blocking(move || {
+            let analyzer = ImplementationPatternAnalyzer::new();
+            analyzer.extract_patterns(&path_clone)
+        });
+
+        // Apply timeout and collect results
+        let timeout = tokio::time::Duration::from_secs(120);
         let mut all_patterns = Vec::new();
-        
-        // Extract patterns from each analyzer
-        all_patterns.extend(naming_analyzer.extract_patterns(&path)?);
-        all_patterns.extend(structural_analyzer.extract_patterns(&path)?);
-        all_patterns.extend(implementation_analyzer.extract_patterns(&path)?);
-        
+
+        // Handle naming patterns: timeout -> join -> extract_patterns
+        if let Ok(join_res) = tokio::time::timeout(timeout, naming_task).await {
+            if let Ok(Ok(patterns)) = join_res {
+                all_patterns.extend(patterns);
+            }
+        }
+
+        // Handle structural patterns
+        if let Ok(join_res) = tokio::time::timeout(timeout, structural_task).await {
+            if let Ok(Ok(patterns)) = join_res {
+                all_patterns.extend(patterns);
+            }
+        }
+
+        // Handle implementation patterns
+        if let Ok(join_res) = tokio::time::timeout(timeout, implementation_task).await {
+            if let Ok(Ok(patterns)) = join_res {
+                all_patterns.extend(patterns);
+            }
+        }
+
         Ok(all_patterns)
     }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { initializeDIContainer } from '../core/bootstrap.js';
+import { initializeDIContainer, disposeDIContainer } from '../core/bootstrap.js';
 import { Logger } from '../utils/logger.js';
 import { PathValidator } from '../utils/path-validator.js';
 import { translateError, isInMemoriaError } from '../core/errors.js';
@@ -47,13 +47,31 @@ export async function handleLearnCommand(args: LearnArgs): Promise<void> {
     
     // Set exit code based on result
     if (!result.success) {
+      // Clean up resources before exiting with error
+      await disposeDIContainer().catch(() => {
+        // Ignore cleanup errors on failure
+      });
       process.exit(1);
     }
+    
+    // Clean up resources (close database and vector store connections)
+    await disposeDIContainer().catch(() => {
+      // Ignore cleanup errors
+    });
+    
+    // Exit successfully after learning completes
+    process.exit(0);
     
   } catch (error) {
     const standardizedError = translateError(error, 'Learn command');
     Logger.error('Learn command failed:', standardizedError);
     console.error(`❌ Learning failed [${standardizedError.code}]: ${standardizedError.message}`);
+    
+    // Clean up resources on error
+    await disposeDIContainer().catch(() => {
+      // Ignore cleanup errors
+    });
+    
     process.exit(1);
   }
 }

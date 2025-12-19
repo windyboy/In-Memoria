@@ -103,7 +103,6 @@ export {
   createBackendAdapter,
   createBackendAdapterFromEnv,
   EnhancedSurrealBackendAdapter,
-  // QdrantBackendAdapter and EnhancedQdrantBackendAdapter removed in Phase 3 - only SurrealDB supported per requirement 6.1
   createEnhancedBackendAdapter,
   createEnhancedBackendAdapterFromEnv
 } from './backend-adapters.js';
@@ -119,8 +118,6 @@ export {
   HealthCheckResult
 } from './diagnostics.js';
 
-// PerformanceOptimizer and related exports removed in Phase 3 - performance optimization consolidated
-
 // Export data integrity and consistency types for use by implementations
 export {
   DataIntegrityValidator,
@@ -130,8 +127,6 @@ export {
   MigrationContext,
   MetadataValidationRules
 } from './data-integrity.js';
-
-// DataMigrationManager and related exports removed in Phase 3 - data migration functionality consolidated
 
 export {
   DataConsistencyManager,
@@ -152,5 +147,3 @@ export {
   LoggingConfig,
   MonitoringConfig
 } from './diagnostics.js';
-
-// MonitoringIntegration and related exports removed in Phase 3 - monitoring functionality consolidated

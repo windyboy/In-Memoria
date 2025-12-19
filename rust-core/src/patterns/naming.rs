@@ -8,6 +8,7 @@ use crate::types::{ParseError, LineRange, SemanticConcept};
 use std::collections::HashMap;
 use walkdir::WalkDir;
 use std::fs;
+use std::path::Path;
 use regex::Regex;
 
 /// Analyzer for detecting and learning naming conventions
@@ -395,27 +396,88 @@ impl NamingPatternAnalyzer {
         }
         None
     }
+
+    /// Check if a file should be analyzed
+    fn should_analyze_file(&self, file_path: &Path) -> bool {
+        // Skip common non-source directories
+        let path_str = file_path.to_string_lossy();
+        if path_str.contains("node_modules")
+            || path_str.contains(".git")
+            || path_str.contains("target")
+            || path_str.contains("dist")
+            || path_str.contains("build")
+            || path_str.contains(".next")
+            || path_str.contains("__pycache__")
+            || path_str.contains("coverage")
+            || path_str.contains(".vscode")
+            || path_str.contains(".idea")
+        {
+            return false;
+        }
+
+        // Check if file extension is supported
+        if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
+            self.is_supported_extension(extension)
+        } else {
+            false
+        }
+    }
+
+    /// Check if file extension is supported
+    fn is_supported_extension(&self, extension: &str) -> bool {
+        matches!(
+            extension.to_lowercase().as_str(),
+            "js" | "jsx" | "ts" | "tsx" | "rs" | "py" | "java" | "cpp" | "c" | "cs" | "go"
+        )
+    }
 }
 
 impl PatternExtractor for NamingPatternAnalyzer {
     fn extract_patterns(&self, path: &str) -> Result<Vec<Pattern>, ParseError> {
+        const MAX_DEPTH: usize = 5;
+        const MAX_FILES: usize = 200;
+        const MAX_FILE_SIZE: u64 = 1_000_000; // 1MB
+        const TIMEOUT_SECS: u64 = 60;
+
         let mut all_patterns = Vec::new();
-        
-        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+        let mut file_count = 0;
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(TIMEOUT_SECS);
+
+        for entry in WalkDir::new(path)
+            .max_depth(MAX_DEPTH)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if start_time.elapsed() > timeout || file_count >= MAX_FILES {
+                break;
+            }
+
             if entry.file_type().is_file() {
                 let file_path = entry.path();
+                if !self.should_analyze_file(file_path) {
+                    continue;
+                }
+
+                if let Ok(metadata) = fs::metadata(file_path) {
+                    if metadata.len() > MAX_FILE_SIZE {
+                        continue;
+                    }
+                }
+
                 if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
                     let language = match extension.to_lowercase().as_str() {
                         "js" | "jsx" => "javascript",
-                        "ts" | "tsx" => "typescript", 
+                        "ts" | "tsx" => "typescript",
                         "rs" => "rust",
                         "py" => "python",
                         _ => continue,
                     };
-                    
+
                     if let Ok(content) = fs::read_to_string(file_path) {
+                        file_count += 1;
                         let names = self.extract_names_from_code(&content, language);
-                        
+
                         for name in names {
                             if let Some(pattern_type) = self.classify_name(&name, language) {
                                 all_patterns.push(Pattern {
@@ -437,7 +499,7 @@ impl PatternExtractor for NamingPatternAnalyzer {
                 }
             }
         }
-        
+
         Ok(all_patterns)
     }
 }

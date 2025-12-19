@@ -4,13 +4,6 @@ import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { runServer } from "./mcp/server.js";
-// Watchers removed in Phase 3 - legacy modules deleted
-import { SemanticEngine } from "./utils/semantic-engine.js";
-import { PatternEngine } from "./utils/pattern-engine.js";
-import { SQLiteDatabase } from "./storage/sqlite-db.js";
-import { createVectorStore } from "./storage/backend-unified.js";
-
-import { config } from "./utils/config.js";
 import { Logger } from "./utils/logger.js";
 import { PathValidator } from "./utils/path-validator.js";
 
@@ -107,8 +100,6 @@ async function main() {
             break;
     }
 }
-
-// startWatcher function removed in Phase 3 - watchers deleted
 
 function showHelp(): void {
     console.log(`

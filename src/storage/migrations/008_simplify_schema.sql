@@ -75,53 +75,70 @@ FROM developer_patterns;
 DROP TABLE developer_patterns;
 ALTER TABLE developer_patterns_new RENAME TO developer_patterns;
 
--- Keep feature_map table as is (already matches simplified schema)
--- Just ensure it has the correct structure
-CREATE TABLE feature_map_new (
+-- Keep feature_map table as is (already matches current schema)
+-- Ensure it has the correct structure with project_path, primary_files, etc.
+CREATE TABLE IF NOT EXISTS feature_map_new (
   id TEXT PRIMARY KEY,
+  project_path TEXT NOT NULL,
   feature_name TEXT NOT NULL,
-  file_paths TEXT, -- JSON array
-  confidence REAL NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  primary_files TEXT, -- JSON array
+  related_files TEXT, -- JSON array
+  dependencies TEXT, -- JSON array
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Copy data from existing feature_map if it exists
-INSERT INTO feature_map_new (id, feature_name, file_paths, confidence, created_at)
+-- Copy data from existing feature_map if it exists, handling both old and new schemas
+INSERT INTO feature_map_new (id, project_path, feature_name, primary_files, related_files, dependencies, status, created_at, updated_at)
 SELECT 
   id,
+  COALESCE(project_path, ''),
   feature_name,
-  primary_files, -- Use primary_files as file_paths
-  1.0, -- Default confidence
-  created_at
+  COALESCE(primary_files, file_paths, '[]'),
+  COALESCE(related_files, '[]'),
+  COALESCE(dependencies, '[]'),
+  COALESCE(status, 'active'),
+  created_at,
+  COALESCE(updated_at, created_at, datetime('now'))
 FROM feature_map;
 
 -- Replace old table
-DROP TABLE feature_map;
+DROP TABLE IF EXISTS feature_map;
 ALTER TABLE feature_map_new RENAME TO feature_map;
 
--- Update project_metadata table to match simplified schema
-CREATE TABLE project_metadata_new (
-  project_path TEXT PRIMARY KEY,
-  last_learned DATETIME NOT NULL,
-  version TEXT,
-  languages TEXT, -- JSON array
-  frameworks TEXT, -- JSON array
-  stats TEXT -- JSON object
+-- Update project_metadata table - keep current schema structure
+-- Ensure it has project_id as PRIMARY KEY (matching schema.sql)
+CREATE TABLE IF NOT EXISTS project_metadata_new (
+  project_id TEXT PRIMARY KEY,
+  project_path TEXT NOT NULL UNIQUE,
+  project_name TEXT,
+  language_primary TEXT,
+  languages_detected TEXT, -- JSON array
+  framework_detected TEXT, -- JSON array
+  intelligence_version TEXT,
+  last_full_scan DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Copy data from old table with column mapping
-INSERT INTO project_metadata_new (project_path, last_learned, version, languages, frameworks, stats)
+INSERT INTO project_metadata_new (project_id, project_path, project_name, language_primary, languages_detected, framework_detected, intelligence_version, last_full_scan, created_at, updated_at)
 SELECT 
+  COALESCE(project_id, project_path), -- Use project_path as project_id if project_id missing
   project_path,
-  COALESCE(last_full_scan, datetime('now')),
-  intelligence_version,
-  languages_detected,
-  framework_detected,
-  '{}' -- Empty stats object
+  project_name,
+  language_primary,
+  COALESCE(languages_detected, languages, '[]'),
+  COALESCE(framework_detected, frameworks, '[]'),
+  COALESCE(intelligence_version, version),
+  COALESCE(last_full_scan, last_learned),
+  COALESCE(created_at, datetime('now')),
+  COALESCE(updated_at, datetime('now'))
 FROM project_metadata;
 
 -- Replace old table
-DROP TABLE project_metadata;
+DROP TABLE IF EXISTS project_metadata;
 ALTER TABLE project_metadata_new RENAME TO project_metadata;
 
 -- Create indexes for the simplified schema
@@ -130,4 +147,4 @@ CREATE INDEX IF NOT EXISTS idx_semantic_concepts_name ON semantic_concepts(name)
 CREATE INDEX IF NOT EXISTS idx_developer_patterns_category ON developer_patterns(category);
 CREATE INDEX IF NOT EXISTS idx_developer_patterns_frequency ON developer_patterns(frequency DESC);
 CREATE INDEX IF NOT EXISTS idx_feature_map_name ON feature_map(feature_name);
-CREATE INDEX IF NOT EXISTS idx_project_metadata_learned ON project_metadata(last_learned);
+CREATE INDEX IF NOT EXISTS idx_project_metadata_path ON project_metadata(project_path);

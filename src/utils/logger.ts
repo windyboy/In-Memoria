@@ -23,7 +23,11 @@ export class Logger {
    * - CLI mode: writes to stderr
    */
   static error(message: string, ...args: any[]): void {
-    console.error(message, ...args);
+    if (this.isMCPServer()) {
+      console.error(`[error] ${message}`, ...args);
+    } else {
+      console.error(message, ...args);
+    }
   }
 
   /**
@@ -35,7 +39,8 @@ export class Logger {
     if (this.isMCPServer()) {
       // In MCP mode, write to stderr instead of stdout
       // MCP spec allows stderr for logging
-      console.error(message, ...args);
+      // Add [info] prefix so MCP clients can properly categorize logs
+      console.error(`[info] ${message}`, ...args);
     } else {
       console.log(message, ...args);
     }
@@ -47,7 +52,11 @@ export class Logger {
    * - CLI mode: writes to stderr
    */
   static warn(message: string, ...args: any[]): void {
-    console.warn(message, ...args);
+    if (this.isMCPServer()) {
+      console.error(`[warn] ${message}`, ...args);
+    } else {
+      console.warn(message, ...args);
+    }
   }
 
   /**

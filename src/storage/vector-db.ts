@@ -461,9 +461,12 @@ export class SurrealVectorDB implements VectorStore {
       return;
     }
 
+    // Try to find local model root (even if not in offline mode)
+    this.localModelRoot = this.localModelRoot || this.findLocalModelRoot();
+    const hasLocalModel = !!this.localModelRoot;
+
     if (this.offlineMode) {
-      this.localModelRoot = this.localModelRoot || this.findLocalModelRoot();
-      if (!this.localModelRoot) {
+      if (!hasLocalModel) {
         Logger.info(
           "🔄 Offline/local-only mode without cached model assets; using fallback embedding method",
         );
@@ -482,10 +485,19 @@ export class SurrealVectorDB implements VectorStore {
       Logger.debug(
         `🔄 Creating feature-extraction pipeline with model: ${this.embeddingModel}`,
       );
+      
+      // Build pipeline options - use local files only if local model found
+      const pipelineOptions: any = {};
+      if (hasLocalModel) {
+        pipelineOptions.local_files_only = true;
+        Logger.debug(`📍 Using local model files only from: ${this.localModelRoot}`);
+      }
+      
       const startTime = Date.now();
       this.localEmbeddingPipeline = await pipelineFactory(
         "feature-extraction",
         this.embeddingModel,
+        pipelineOptions, // Pass options to prevent network fetches
       );
       const loadTime = Date.now() - startTime;
       Logger.info(
@@ -505,6 +517,23 @@ export class SurrealVectorDB implements VectorStore {
     }
   }
 
+  /**
+   * Helper to add timeout to async operations
+   */
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    operation: string
+  ): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]);
+  }
+
   async initialize(collectionName: string = "in-memoria"): Promise<void> {
     const operationId = this.performanceMonitor.startOperation('initialize');
     try {
@@ -512,13 +541,30 @@ export class SurrealVectorDB implements VectorStore {
       // IMPORTANT: Requires SURREAL_SYNC_DATA=true for crash safety
       const dbPath =
         process.env.IN_MEMORIA_VECTOR_DB_PATH || "in-memoria-vectors.db";
-      await this.db.connect(`surrealkv://${dbPath}`);
+      
+      // Add timeout to connection (30 seconds default, configurable)
+      const connectionTimeout = parseInt(
+        process.env.IN_MEMORIA_CONNECTION_TIMEOUT || "30000",
+        10
+      );
+      
+      Logger.debug(`Connecting to SurrealDB at ${dbPath} (timeout: ${connectionTimeout}ms)`);
+      
+      await this.withTimeout(
+        this.db.connect(`surrealkv://${dbPath}`),
+        connectionTimeout,
+        "SurrealDB connection"
+      );
 
       // Use database and namespace
-      await this.db.use({
-        namespace: "in_memoria",
-        database: collectionName,
-      });
+      await this.withTimeout(
+        this.db.use({
+          namespace: "in_memoria",
+          database: collectionName,
+        }),
+        connectionTimeout,
+        "SurrealDB use database"
+      );
 
       // Execute SurrealDB definitions with idempotent error handling
       const definitions = [
@@ -532,14 +578,26 @@ export class SurrealVectorDB implements VectorStore {
         "DEFINE INDEX code_content ON code_documents COLUMNS code SEARCH ANALYZER code_analyzer BM25(1.2,0.75) HIGHLIGHTS;",
       ];
 
+      const operationTimeout = parseInt(
+        process.env.IN_MEMORIA_OPERATION_TIMEOUT || "30000",
+        10
+      );
+
       for (const definition of definitions) {
         try {
-          await this.db.query(definition);
+          await this.withTimeout(
+            this.db.query(definition),
+            operationTimeout,
+            `SurrealDB definition: ${definition.split(" ")[1]}`
+          );
         } catch (error: any) {
           if (error.message && error.message.includes("already exists")) {
             Logger.debug(
               `Definition already exists: ${definition.split(" ")[1]} ${definition.split(" ")[2] || ""}`,
             );
+          } else if (error.message && error.message.includes("timed out")) {
+            Logger.warn(`Definition query timed out: ${definition.split(" ")[1]}`);
+            // Continue with other definitions even if one times out
           } else {
             throw error;
           }

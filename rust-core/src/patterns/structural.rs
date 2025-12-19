@@ -269,13 +269,32 @@ impl StructuralPatternAnalyzer {
 
     /// Analyze file patterns in the codebase
     fn analyze_file_patterns(&self, path: &str) -> Result<HashMap<String, Vec<String>>, ParseError> {
+        const MAX_DEPTH: usize = 5;
+        const MAX_FILES: usize = 200;
+        const TIMEOUT_SECS: u64 = 60;
+
         let mut file_patterns: HashMap<String, Vec<String>> = HashMap::new();
-        
-        for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+        let mut file_count = 0;
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(TIMEOUT_SECS);
+
+        for entry in WalkDir::new(path)
+            .max_depth(MAX_DEPTH)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if start_time.elapsed() > timeout || file_count >= MAX_FILES {
+                break;
+            }
+
             if entry.file_type().is_file() {
                 let file_path = entry.path();
+                if !self.should_analyze_file(file_path) {
+                    continue;
+                }
+
+                file_count += 1;
                 if let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) {
-                    // Categorize files by patterns
                     if file_name.contains("Controller") {
                         file_patterns.entry("controller".to_string()).or_default().push(file_name.to_string());
                     }
@@ -297,8 +316,31 @@ impl StructuralPatternAnalyzer {
                 }
             }
         }
-        
+
         Ok(file_patterns)
+    }
+
+    /// Check if a file should be analyzed
+    fn should_analyze_file(&self, file_path: &Path) -> bool {
+        // Skip common non-source directories
+        let path_str = file_path.to_string_lossy();
+        if path_str.contains("node_modules")
+            || path_str.contains(".git")
+            || path_str.contains("target")
+            || path_str.contains("dist")
+            || path_str.contains("build")
+            || path_str.contains(".next")
+            || path_str.contains("__pycache__")
+            || path_str.contains("coverage")
+            || path_str.contains(".vscode")
+            || path_str.contains(".idea")
+        {
+            return false;
+        }
+
+        // For structural analysis, we're primarily interested in file names, not extensions
+        // So we don't need strict extension filtering here
+        true
     }
 
     /// Calculate confidence score for a structural pattern

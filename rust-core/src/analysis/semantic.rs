@@ -316,7 +316,8 @@ impl SemanticAnalyzer {
             }
         }
 
-        eprintln!("Processed {} source files and found {} concepts", processed_count, all_concepts.len());
+        // Use [info] prefix to match TypeScript Logger format for MCP clients
+        eprintln!("[info] Processed {} source files and found {} concepts", processed_count, all_concepts.len());
         Ok(all_concepts)
     }
 

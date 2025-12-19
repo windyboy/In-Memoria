@@ -12,6 +12,7 @@ import {
   PerformanceOptimizer,
 } from "../utils/performance-profiler.js";
 import { detectLanguageFromPath as resolveLanguageFromPath } from "../utils/language-registry.js";
+import { Logger } from "./logger.js";
 
 export interface CodebaseAnalysisResult {
   languages: string[];
@@ -253,7 +254,9 @@ export class SemanticEngine {
     }>
   > {
     try {
-      console.error(`🧠 Starting semantic analysis for: ${path}`);
+      // Use Logger instead of console.error to avoid duplicate logs
+      // LearningService already logs this, so we skip it here to prevent duplication
+      // Logger.info(`🧠 Starting semantic analysis for: ${path}`);
 
       // Ensure Rust analyzer is initialized
       await this.initializeRustAnalyzer();
@@ -352,7 +355,9 @@ export class SemanticEngine {
         );
       }
 
-      console.error(`✅ Extracted ${concepts.length} concepts from codebase`);
+      // Log completion - LearningService will also log this, but with more context
+      // So we use debug level here to avoid duplication
+      Logger.debug(`✅ Extracted ${concepts.length} concepts from codebase`);
 
       // Return analysis results without storing them
       const result = concepts.map((c: any) => ({

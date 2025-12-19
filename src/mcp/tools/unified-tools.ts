@@ -368,7 +368,7 @@ export class UnifiedMCPTools {
             success: result.success,
             conceptsLearned: result.conceptsLearned,
             patternsLearned: result.patternsDiscovered,
-            featuresLearned: 0,
+            featuresLearned: result.featuresLearned || 0,
             insights: [],
             timeElapsed: result.duration,
             blueprint: undefined

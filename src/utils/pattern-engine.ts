@@ -1,12 +1,5 @@
 import { PatternLearner, BlueprintAnalyzer } from './rust-bindings.js';
 import { SQLiteDatabase, DeveloperPattern } from '../storage/sqlite-db.js';
-// FileChange import removed - watchers deleted in Phase 3
-// Local interface for backward compatibility with Rust bindings
-interface FileChange {
-  path: string;
-  type: 'created' | 'modified' | 'deleted';
-  content?: string;
-}
 import { CircuitBreaker, createRustAnalyzerCircuitBreaker } from '../utils/circuit-breaker.js';
 import { nanoid } from 'nanoid';
 
@@ -68,23 +61,14 @@ export class PatternEngine {
     confidence: number;
   }>> {
     try {
-      // Use the change analysis to detect patterns in the file
-      const change: FileChange = {
-        type: 'modified',
-        path: filePath,
-        content
-      };
-
-      const analysis = await this.analyzeFileChange(change);
+      // Extract patterns directly without using deprecated FileChange analysis
+      const extractionResult = await this.extractPatterns(filePath);
       
-      return analysis.detected.map(patternType => {
-        const pattern = this.getPatternByType(patternType);
-        return {
-          type: patternType,
-          description: pattern?.description || `${patternType} pattern detected`,
-          confidence: pattern?.confidence || 0.7
-        };
-      });
+      return extractionResult.map(pattern => ({
+        type: pattern.type,
+        description: pattern.description,
+        confidence: 0.7 // Default confidence
+      }));
     } catch (error) {
       console.error('File pattern analysis error:', error);
       return this.fallbackFilePatternAnalysis(content, filePath);
@@ -264,37 +248,6 @@ export class PatternEngine {
     }
   }
 
-  /**
-   * @deprecated Watchers removed in Phase 3 - this method is no longer used
-   */
-  async analyzeFileChange(change: FileChange): Promise<PatternAnalysisResult> {
-    try {
-      const changeData = JSON.stringify({
-        type: change.type,
-        path: change.path,
-        content: change.content,
-        language: this.detectLanguage(change.path)
-      });
-
-      const analysis = await this.rustLearner.analyzeFileChange(changeData);
-      
-      return {
-        detected: analysis.detected,
-        violations: analysis.violations,
-        recommendations: analysis.recommendations,
-        learned: analysis.learned?.map((p: any) => ({
-          id: p.id,
-          type: p.patternType,
-          content: { description: p.description },
-          frequency: p.frequency,
-          confidence: p.confidence
-        }))
-      };
-    } catch (error) {
-      console.error('File change analysis error:', error);
-      return this.fallbackChangeAnalysis(change);
-    }
-  }
 
   async findRelevantPatterns(
     problemDescription: string,
@@ -417,27 +370,6 @@ export class PatternEngine {
     }
   }
 
-  /**
-   * @deprecated Watchers removed in Phase 3 - this method is no longer used
-   */
-  async updateFromChange(change: FileChange): Promise<void> {
-    try {
-      const changeData = JSON.stringify({
-        type: change.type,
-        path: change.path,
-        content: change.content,
-        language: this.detectLanguage(change.path),
-        hash: this.generateContentHash(change.content || '')
-      });
-
-      await this.rustLearner.updateFromChange(changeData);
-      
-      // Note: Pattern usage statistics updates are now handled by LearningService (single writer principle)
-      // This method now only performs the Rust analysis without database writes
-    } catch (error) {
-      console.error('Failed to update from change:', error);
-    }
-  }
 
   async getPatternsByType(patternType: string, limit?: number): Promise<DeveloperPattern[]> {
     return this.database.getDeveloperPatterns(patternType, limit);
@@ -488,34 +420,6 @@ export class PatternEngine {
     ];
   }
 
-  /**
-   * @deprecated Watchers removed in Phase 3 - this method is no longer used
-   */
-  private fallbackChangeAnalysis(change: FileChange): PatternAnalysisResult {
-    const detected: string[] = [];
-    const violations: string[] = [];
-    const recommendations: string[] = [];
-
-    // Simple pattern detection based on file content
-    if (change.content) {
-      // Check for naming conventions
-      if (/function\s+[a-z][a-zA-Z]*/.test(change.content)) {
-        detected.push('camelCase_function_naming');
-      }
-      
-      if (/class\s+[A-Z][a-zA-Z]*/.test(change.content)) {
-        detected.push('PascalCase_class_naming');
-      }
-
-      // Check for potential violations
-      if (/function\s+[A-Z]/.test(change.content)) {
-        violations.push('function_naming_violation');
-        recommendations.push('Use camelCase for function names');
-      }
-    }
-
-    return { detected, violations, recommendations };
-  }
 
   private fallbackRelevantPatterns(problemDescription: string): RelevantPattern[] {
     // Simple keyword-based pattern matching
@@ -567,18 +471,6 @@ export class PatternEngine {
     };
   }
 
-  /**
-   * @deprecated Watchers removed in Phase 3 - this method is no longer used
-   */
-  private async updatePatternUsageStats(change: FileChange): Promise<void> {
-    // This method is now deprecated - pattern usage statistics updates
-    // are handled by LearningService (single writer principle)
-    // Keeping method for backward compatibility but it no longer writes to database
-    console.warn('updatePatternUsageStats is deprecated - use LearningService for pattern updates');
-    
-    // NO DATABASE WRITES - All write operations moved to LearningService
-    // This ensures single writer principle is maintained
-  }
 
   private isPatternUsedInContent(
     pattern: DeveloperPattern,

@@ -41,6 +41,9 @@ export interface DeveloperPattern {
   lastSeen: Date;
 }
 
+// Interfaces for dropped tables - kept for type compatibility with stubbed methods
+// These tables were dropped in migration 8, but interfaces remain for backward compatibility
+
 export interface FileIntelligence {
   filePath: string;
   fileHash: string;
@@ -75,6 +78,7 @@ export interface FeatureMap {
   updatedAt: Date;
 }
 
+// Table dropped in migration 8 - interface kept for type compatibility
 export interface EntryPoint {
   id: string;
   projectPath: string;
@@ -85,6 +89,7 @@ export interface EntryPoint {
   createdAt: Date;
 }
 
+// Table dropped in migration 8 - interface kept for type compatibility
 export interface KeyDirectory {
   id: string;
   projectPath: string;
@@ -95,6 +100,7 @@ export interface KeyDirectory {
   createdAt: Date;
 }
 
+// Table dropped in migration 8 - interface kept for type compatibility
 export interface WorkSession {
   id: string;
   projectPath: string;
@@ -109,6 +115,7 @@ export interface WorkSession {
   lastUpdated: Date;
 }
 
+// Table dropped in migration 8 - interface kept for type compatibility
 export interface ProjectDecision {
   id: string;
   projectPath: string;
@@ -145,6 +152,145 @@ export class SQLiteDatabase {
     } else {
       Logger.info('Database is up to date');
     }
+    
+    // Check and fix schema integrity (for existing databases)
+    this.ensureSchemaIntegrity();
+  }
+
+  private ensureSchemaIntegrity(): void {
+    try {
+      // Check if semantic_concepts table exists
+      const tableExists = this.db.prepare(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='semantic_concepts'
+      `).get();
+      
+      if (!tableExists) {
+        // Table doesn't exist, migrations will create it
+        return;
+      }
+      
+      // Check table structure
+      const columns = this.db.prepare(`
+        PRAGMA table_info(semantic_concepts)
+      `).all() as Array<{ name: string; type: string }>;
+      
+      const columnNames = columns.map(col => col.name);
+      
+      // Check if table has old schema (concept_name) or new schema (name)
+      const hasOldSchema = columnNames.includes('concept_name') && !columnNames.includes('name');
+      const hasNewSchema = columnNames.includes('name');
+      
+      if (hasOldSchema) {
+        // Table has old schema, need to migrate
+        Logger.info('Detected old schema in semantic_concepts table (concept_name, concept_type, confidence_score)');
+        Logger.info('Migrating to new schema (name, type, confidence)...');
+        this.migrateSemanticConceptsTable(columns);
+        Logger.info('Schema migration completed successfully');
+      }
+      
+      // Check if context column exists (for both old and new schema)
+      const hasContextColumn = columnNames.includes('context');
+      
+      if (!hasContextColumn) {
+        Logger.info('Adding missing context column to semantic_concepts table');
+        this.db.exec('ALTER TABLE semantic_concepts ADD COLUMN context TEXT DEFAULT ""');
+        Logger.info('Context column added successfully');
+      }
+    } catch (error) {
+      Logger.warn('Schema integrity check failed:', error);
+      // Don't throw - allow system to continue, but log the issue
+    }
+  }
+
+  /**
+   * Migrate semantic_concepts table from old schema to new schema
+   * Old schema: concept_name, concept_type, confidence_score, file_path
+   * New schema: name, type, confidence, context
+   */
+  private migrateSemanticConceptsTable(oldColumns: Array<{ name: string; type: string }>): void {
+    const columnNames = oldColumns.map(col => col.name);
+    const hasFilePath = columnNames.includes('file_path');
+    const hasCreatedAt = columnNames.includes('created_at');
+    
+    Logger.info('Starting semantic_concepts table migration...');
+    Logger.info(`Detected columns: ${columnNames.join(', ')}`);
+    
+    // Use transaction to ensure atomicity
+    const migrateTransaction = this.db.transaction(() => {
+      try {
+        // Step 1: Create new table with correct schema
+        Logger.info('Creating new table with correct schema...');
+        this.db.exec(`
+          CREATE TABLE semantic_concepts_new (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            context TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        
+        // Step 2: Copy data from old table, mapping old column names to new ones
+        Logger.info('Copying data from old table to new table...');
+        const insertQuery = `
+          INSERT INTO semantic_concepts_new (id, name, type, confidence, context, created_at)
+          SELECT 
+            id,
+            concept_name as name,
+            concept_type as type,
+            confidence_score as confidence,
+            ${hasFilePath ? 'COALESCE(file_path, \'\')' : '\'\''} as context,
+            ${hasCreatedAt ? 'created_at' : 'CURRENT_TIMESTAMP'} as created_at
+          FROM semantic_concepts
+        `;
+        
+        this.db.exec(insertQuery);
+        
+        // Step 3: Get row count for verification
+        const oldCount = this.db.prepare('SELECT COUNT(*) as count FROM semantic_concepts').get() as { count: number };
+        const newCount = this.db.prepare('SELECT COUNT(*) as count FROM semantic_concepts_new').get() as { count: number };
+        
+        if (oldCount.count !== newCount.count) {
+          throw new Error(`Data migration failed: row count mismatch. Old: ${oldCount.count}, New: ${newCount.count}`);
+        }
+        
+        Logger.info(`Successfully copied ${oldCount.count} rows from old table to new table`);
+        
+        // Step 4: Drop old table
+        Logger.info('Dropping old table...');
+        this.db.exec('DROP TABLE semantic_concepts');
+        
+        // Step 5: Rename new table
+        Logger.info('Renaming new table...');
+        this.db.exec('ALTER TABLE semantic_concepts_new RENAME TO semantic_concepts');
+        
+        // Step 6: Recreate indexes
+        Logger.info('Recreating indexes...');
+        this.db.exec('CREATE INDEX IF NOT EXISTS idx_semantic_concepts_type ON semantic_concepts(type)');
+        this.db.exec('CREATE INDEX IF NOT EXISTS idx_semantic_concepts_name ON semantic_concepts(name)');
+        
+        Logger.info('Table migration completed successfully');
+      } catch (error) {
+        Logger.error('Error during table migration:', error);
+        // Clean up new table if it exists
+        try {
+          this.db.exec('DROP TABLE IF EXISTS semantic_concepts_new');
+        } catch (cleanupError) {
+          Logger.warn('Failed to clean up new table during error recovery:', cleanupError);
+        }
+        throw error;
+      }
+    });
+    
+    // Execute the transaction
+    try {
+      migrateTransaction();
+    } catch (error) {
+      Logger.error('Transaction failed during semantic_concepts migration:', error);
+      throw error;
+    }
   }
 
   getMigrator(): DatabaseMigrator {
@@ -172,9 +318,24 @@ export class SQLiteDatabase {
     let query = 'SELECT * FROM semantic_concepts';
     let params: QueryParams = [];
 
+    // If filePath is provided, try to use context column
+    // If context column doesn't exist, fall back to no filtering
     if (filePath) {
-      query += ' WHERE context = ?';
-      params = [filePath];
+      try {
+        // Check if context column exists by trying to prepare the query
+        const testQuery = 'SELECT * FROM semantic_concepts WHERE context = ? LIMIT 1';
+        const testStmt = this.db.prepare(testQuery);
+        // Try to execute with a dummy value to see if column exists
+        testStmt.get(filePath);
+        // If we get here, context column exists, use it
+        query += ' WHERE context = ?';
+        params = [filePath];
+      } catch (error) {
+        // Context column doesn't exist, query without filter
+        Logger.debug('Context column not available, querying all concepts');
+        query = 'SELECT * FROM semantic_concepts';
+        params = [];
+      }
     }
 
     const stmt = this.db.prepare(query);
@@ -187,7 +348,7 @@ export class SQLiteDatabase {
       confidenceScore: Number(row.confidence),
       relationships: {},
       evolutionHistory: {},
-      filePath: String(row.context || ''),
+      filePath: String(row.context || row.file_path || ''), // Fallback to file_path if context missing
       lineRange: { start: 0, end: 0 },
       createdAt: new Date(String(row.created_at)),
       updatedAt: new Date(String(row.created_at)) // Use created_at as updated_at for simplified schema
@@ -247,87 +408,14 @@ export class SQLiteDatabase {
     }));
   }
 
-  // File Intelligence
-  insertFileIntelligence(fileIntel: Omit<FileIntelligence, 'createdAt'>): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO file_intelligence (
-        file_path, file_hash, semantic_concepts, patterns_used,
-        complexity_metrics, dependencies, last_analyzed
-      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `);
-
-    stmt.run(
-      fileIntel.filePath,
-      fileIntel.fileHash,
-      JSON.stringify(fileIntel.semanticConcepts),
-      JSON.stringify(fileIntel.patternsUsed),
-      JSON.stringify(fileIntel.complexityMetrics),
-      JSON.stringify(fileIntel.dependencies)
-    );
-  }
-
-  getFileIntelligence(filePath: string): FileIntelligence | null {
-    const stmt = this.db.prepare('SELECT * FROM file_intelligence WHERE file_path = ?');
-    const row = stmt.get(filePath) as any;
-
-    if (!row) return null;
-
-    return {
-      filePath: row.file_path,
-      fileHash: row.file_hash,
-      semanticConcepts: JSON.parse(row.semantic_concepts || '[]'),
-      patternsUsed: JSON.parse(row.patterns_used || '[]'),
-      complexityMetrics: JSON.parse(row.complexity_metrics || '{}'),
-      dependencies: JSON.parse(row.dependencies || '[]'),
-      lastAnalyzed: new Date(row.last_analyzed + ' UTC'),
-      createdAt: new Date(row.created_at + ' UTC')
-    };
-  }
-
-  // AI Insights
+  // AI Insights - table dropped in migration 8, methods stubbed as no-ops
   insertAIInsight(insight: Omit<AIInsight, 'createdAt'>): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO ai_insights (
-        insight_id, insight_type, insight_content, confidence_score,
-        source_agent, validation_status, impact_prediction
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      insight.insightId,
-      insight.insightType,
-      JSON.stringify(insight.insightContent),
-      insight.confidenceScore,
-      insight.sourceAgent,
-      insight.validationStatus,
-      JSON.stringify(insight.impactPrediction)
-    );
+    Logger.warn('insertAIInsight called but ai_insights table was dropped in migration 8. Operation ignored.');
   }
 
   getAIInsights(insightType?: string): AIInsight[] {
-    let query = 'SELECT * FROM ai_insights';
-    let params: QueryParams = [];
-
-    if (insightType) {
-      query += ' WHERE insight_type = ?';
-      params = [insightType];
-    }
-
-    query += ' ORDER BY confidence_score DESC, created_at DESC';
-
-    const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params) as DatabaseRow[];
-
-    return rows.map((row: DatabaseRow) => ({
-      insightId: String(row.insight_id),
-      insightType: String(row.insight_type),
-      insightContent: JSON.parse(String(row.insight_content)),
-      confidenceScore: Number(row.confidence_score),
-      sourceAgent: String(row.source_agent),
-      validationStatus: String(row.validation_status) as 'pending' | 'validated' | 'rejected',
-      impactPrediction: JSON.parse(String(row.impact_prediction || '{}')),
-      createdAt: new Date(String(row.created_at) + ' UTC')
-    }));
+    Logger.warn('getAIInsights called but ai_insights table was dropped in migration 8. Returning empty array.');
+    return [];
   }
 
   insertFeatureMap(feature: Omit<FeatureMap, 'createdAt' | 'updatedAt'>): void {
@@ -428,100 +516,24 @@ export class SQLiteDatabase {
     };
   }
 
+  // Entry Points - table dropped in migration 8, methods stubbed as no-ops
   insertEntryPoint(entryPoint: Omit<EntryPoint, 'createdAt'>): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO entry_points (
-        id, project_path, entry_type, file_path, description, framework
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      entryPoint.id,
-      entryPoint.projectPath,
-      entryPoint.entryType,
-      entryPoint.filePath,
-      entryPoint.description || null,
-      entryPoint.framework || null
-    );
+    Logger.warn('insertEntryPoint called but entry_points table was dropped in migration 8. Operation ignored.');
   }
 
   getEntryPoints(projectPath: string): EntryPoint[] {
-    // Normalize path - try both absolute and relative (.) paths
-    const paths = [projectPath];
-
-    // If absolute path, also try relative "."
-    if (isAbsolute(projectPath)) {
-      paths.push('.');
-    }
-
-    // Try to find entry points with any of the path variants
-    let rows: DatabaseRow[] = [];
-    for (const path of paths) {
-      const stmt = this.db.prepare(`
-        SELECT * FROM entry_points WHERE project_path = ?
-        ORDER BY entry_type, file_path
-      `);
-      rows = stmt.all(path) as DatabaseRow[];
-      if (rows.length > 0) break;
-    }
-
-    return rows.map((row: DatabaseRow) => ({
-      id: String(row.id),
-      projectPath: String(row.project_path),
-      entryType: String(row.entry_type),
-      filePath: String(row.file_path),
-      description: row.description ? String(row.description) : undefined,
-      framework: row.framework ? String(row.framework) : undefined,
-      createdAt: new Date(String(row.created_at) + ' UTC')
-    }));
+    Logger.warn('getEntryPoints called but entry_points table was dropped in migration 8. Returning empty array.');
+    return [];
   }
 
+  // Key Directories - table dropped in migration 8, methods stubbed as no-ops
   insertKeyDirectory(directory: Omit<KeyDirectory, 'createdAt'>): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO key_directories (
-        id, project_path, directory_path, directory_type, file_count, description
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      directory.id,
-      directory.projectPath,
-      directory.directoryPath,
-      directory.directoryType,
-      directory.fileCount,
-      directory.description || null
-    );
+    Logger.warn('insertKeyDirectory called but key_directories table was dropped in migration 8. Operation ignored.');
   }
 
   getKeyDirectories(projectPath: string): KeyDirectory[] {
-    // Normalize path - try both absolute and relative (.) paths
-    const paths = [projectPath];
-
-    // If absolute path, also try relative "."
-    if (isAbsolute(projectPath)) {
-      paths.push('.');
-    }
-
-    // Try to find key directories with any of the path variants
-    let rows: DatabaseRow[] = [];
-    for (const path of paths) {
-      const stmt = this.db.prepare(`
-        SELECT * FROM key_directories WHERE project_path = ?
-        ORDER BY directory_type, directory_path
-      `);
-      rows = stmt.all(path) as DatabaseRow[];
-      if (rows.length > 0) break;
-    }
-
-    return rows.map((row: DatabaseRow) => ({
-      id: String(row.id),
-      projectPath: String(row.project_path),
-      directoryPath: String(row.directory_path),
-      directoryType: String(row.directory_type),
-      fileCount: Number(row.file_count),
-      description: row.description ? String(row.description) : undefined,
-      createdAt: new Date(String(row.created_at) + ' UTC')
-    }));
+    Logger.warn('getKeyDirectories called but key_directories table was dropped in migration 8. Returning empty array.');
+    return [];
   }
 
   insertProjectMetadata(metadata: {
@@ -588,174 +600,38 @@ export class SQLiteDatabase {
     };
   }
 
+  // Work Sessions - table dropped in migration 8, methods stubbed as no-ops
   createWorkSession(session: Omit<WorkSession, 'sessionStart' | 'lastUpdated'>): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO work_sessions (
-        id, project_path, session_end, last_feature, current_files,
-        completed_tasks, pending_tasks, blockers, session_notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      session.id,
-      session.projectPath,
-      session.sessionEnd ? session.sessionEnd.toISOString() : null,
-      session.lastFeature || null,
-      JSON.stringify(session.currentFiles),
-      JSON.stringify(session.completedTasks),
-      JSON.stringify(session.pendingTasks),
-      JSON.stringify(session.blockers),
-      session.sessionNotes || null
-    );
+    Logger.warn('createWorkSession called but work_sessions table was dropped in migration 8. Operation ignored.');
   }
 
   updateWorkSession(sessionId: string, updates: Partial<Omit<WorkSession, 'id' | 'projectPath' | 'sessionStart' | 'lastUpdated'>>): void {
-    const fields: string[] = [];
-    const values: any[] = [];
-
-    if (updates.sessionEnd !== undefined) {
-      fields.push('session_end = ?');
-      values.push(updates.sessionEnd ? updates.sessionEnd.toISOString() : null);
-    }
-    if (updates.lastFeature !== undefined) {
-      fields.push('last_feature = ?');
-      values.push(updates.lastFeature);
-    }
-    if (updates.currentFiles !== undefined) {
-      fields.push('current_files = ?');
-      values.push(JSON.stringify(updates.currentFiles));
-    }
-    if (updates.completedTasks !== undefined) {
-      fields.push('completed_tasks = ?');
-      values.push(JSON.stringify(updates.completedTasks));
-    }
-    if (updates.pendingTasks !== undefined) {
-      fields.push('pending_tasks = ?');
-      values.push(JSON.stringify(updates.pendingTasks));
-    }
-    if (updates.blockers !== undefined) {
-      fields.push('blockers = ?');
-      values.push(JSON.stringify(updates.blockers));
-    }
-    if (updates.sessionNotes !== undefined) {
-      fields.push('session_notes = ?');
-      values.push(updates.sessionNotes);
-    }
-
-    if (fields.length === 0) return;
-
-    fields.push('last_updated = CURRENT_TIMESTAMP');
-    values.push(sessionId);
-
-    const stmt = this.db.prepare(`
-      UPDATE work_sessions SET ${fields.join(', ')} WHERE id = ?
-    `);
-
-    stmt.run(...values);
+    Logger.warn('updateWorkSession called but work_sessions table was dropped in migration 8. Operation ignored.');
   }
 
   getCurrentWorkSession(projectPath: string): WorkSession | null {
-    const stmt = this.db.prepare(`
-      SELECT * FROM work_sessions
-      WHERE project_path = ? AND session_end IS NULL
-      ORDER BY session_start DESC
-      LIMIT 1
-    `);
-    const row = stmt.get(projectPath) as any;
-
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      projectPath: row.project_path,
-      sessionStart: new Date(row.session_start + ' UTC'),
-      sessionEnd: row.session_end ? new Date(row.session_end + ' UTC') : undefined,
-      lastFeature: row.last_feature,
-      currentFiles: JSON.parse(row.current_files || '[]'),
-      completedTasks: JSON.parse(row.completed_tasks || '[]'),
-      pendingTasks: JSON.parse(row.pending_tasks || '[]'),
-      blockers: JSON.parse(row.blockers || '[]'),
-      sessionNotes: row.session_notes,
-      lastUpdated: new Date(row.last_updated + ' UTC')
-    };
+    Logger.warn('getCurrentWorkSession called but work_sessions table was dropped in migration 8. Returning null.');
+    return null;
   }
 
   getWorkSessions(projectPath: string, limit = 10): WorkSession[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM work_sessions
-      WHERE project_path = ?
-      ORDER BY session_start DESC
-      LIMIT ?
-    `);
-    const rows = stmt.all(projectPath, limit) as DatabaseRow[];
-
-    return rows.map((row: DatabaseRow) => ({
-      id: String(row.id),
-      projectPath: String(row.project_path),
-      sessionStart: new Date(String(row.session_start) + ' UTC'),
-      sessionEnd: row.session_end ? new Date(String(row.session_end) + ' UTC') : undefined,
-      lastFeature: row.last_feature ? String(row.last_feature) : undefined,
-      currentFiles: JSON.parse(String(row.current_files || '[]')),
-      completedTasks: JSON.parse(String(row.completed_tasks || '[]')),
-      pendingTasks: JSON.parse(String(row.pending_tasks || '[]')),
-      blockers: JSON.parse(String(row.blockers || '[]')),
-      sessionNotes: row.session_notes ? String(row.session_notes) : undefined,
-      lastUpdated: new Date(String(row.last_updated) + ' UTC')
-    }));
+    Logger.warn('getWorkSessions called but work_sessions table was dropped in migration 8. Returning empty array.');
+    return [];
   }
 
+  // Project Decisions - table dropped in migration 8, methods stubbed as no-ops
   upsertProjectDecision(decision: Omit<ProjectDecision, 'madeAt'>): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO project_decisions (
-        id, project_path, decision_key, decision_value, reasoning
-      ) VALUES (?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      decision.id,
-      decision.projectPath,
-      decision.decisionKey,
-      decision.decisionValue,
-      decision.reasoning || null
-    );
+    Logger.warn('upsertProjectDecision called but project_decisions table was dropped in migration 8. Operation ignored.');
   }
 
   getProjectDecisions(projectPath: string, limit = 20): ProjectDecision[] {
-    const stmt = this.db.prepare(`
-      SELECT * FROM project_decisions
-      WHERE project_path = ?
-      ORDER BY made_at DESC
-      LIMIT ?
-    `);
-    const rows = stmt.all(projectPath, limit) as DatabaseRow[];
-
-    return rows.map((row: DatabaseRow) => ({
-      id: String(row.id),
-      projectPath: String(row.project_path),
-      decisionKey: String(row.decision_key),
-      decisionValue: String(row.decision_value),
-      reasoning: row.reasoning ? String(row.reasoning) : undefined,
-      madeAt: new Date(String(row.made_at) + ' UTC')
-    }));
+    Logger.warn('getProjectDecisions called but project_decisions table was dropped in migration 8. Returning empty array.');
+    return [];
   }
 
   getProjectDecision(projectPath: string, decisionKey: string): ProjectDecision | null {
-    const stmt = this.db.prepare(`
-      SELECT * FROM project_decisions
-      WHERE project_path = ? AND decision_key = ?
-    `);
-    const row = stmt.get(projectPath, decisionKey) as any;
-
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      projectPath: row.project_path,
-      decisionKey: row.decision_key,
-      decisionValue: row.decision_value,
-      reasoning: row.reasoning,
-      madeAt: new Date(row.made_at + ' UTC')
-    };
+    Logger.warn('getProjectDecision called but project_decisions table was dropped in migration 8. Returning null.');
+    return null;
   }
 
   close(): void {
