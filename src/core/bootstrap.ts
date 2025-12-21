@@ -143,11 +143,32 @@ function registerServiceLayer(container: DIContainer): void {
   // Register SearchService (implemented in task 4)
   container.registerFactory(ServiceKeys.SEARCH_SERVICE, async () => {
     const { SearchServiceImpl } = await import('./services/SearchService.js');
-    // Create a mock SearchEngine since the legacy one was deleted
-    const mockSearchEngine = {
-      search: async () => ({ results: [], totalFound: 0, searchType: 'mock' })
+    const vectorStore = await container.get(ServiceKeys.VECTOR_STORE);
+    
+    // Create a real SearchEngine that uses the vector store
+    const searchEngine = {
+      search: async (query: any) => {
+        try {
+          const results = await vectorStore.findSimilarCode(query.query, query.limit || 20, query.filters);
+          return {
+            results: results.map((result: any) => ({
+              id: result.id,
+              content: result.code || result.content || '',
+              metadata: result.metadata || {},
+              score: result.score || 0,
+              filePath: result.filePath || result.metadata?.filePath || '',
+              language: result.language || result.metadata?.language || 'unknown'
+            })),
+            totalFound: results.length,
+            searchType: query.type || 'semantic'
+          };
+        } catch (error) {
+          Logger.warn(`Search engine error: ${error instanceof Error ? error.message : String(error)}`);
+          return { results: [], totalFound: 0, searchType: query.type || 'semantic' };
+        }
+      }
     };
-    return new SearchServiceImpl(mockSearchEngine as any);
+    return new SearchServiceImpl(searchEngine as any);
   });
   
   // Register DiagnosticService (implemented in task 5)

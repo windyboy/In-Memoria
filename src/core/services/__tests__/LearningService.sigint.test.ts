@@ -16,6 +16,15 @@ vi.mock('../../../utils/logger.js', () => ({
   }
 }));
 
+// Mock the vector store creation to avoid SurrealDB connection
+vi.mock('../../../storage/backend-unified.js', () => ({
+  createVectorStore: vi.fn(() => ({
+    initialize: vi.fn().mockResolvedValue(undefined),
+    storeCodeEmbedding: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined)
+  }))
+}));
+
 describe('LearningService SIGINT Handling', () => {
   let learningService: LearningServiceImpl;
   let mockDatabase: SQLiteDatabase;
@@ -70,6 +79,15 @@ describe('LearningService SIGINT Handling', () => {
           type: 'camelCase_function_naming',
           description: 'Functions use camelCase naming',
           frequency: 5
+        }
+      ]),
+      buildFeatureMap: vi.fn().mockResolvedValue([
+        {
+          id: 'feature-1',
+          featureName: 'TestFeature',
+          primaryFiles: ['/test/file.ts'],
+          relatedFiles: [],
+          dependencies: []
         }
       ])
     } as any;

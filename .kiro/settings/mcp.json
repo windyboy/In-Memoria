@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "env": {},
+      "disabled": true,
+      "autoApprove": []
+    },
+    "in-memoria": {
+      "command":"in-memoria",
+      "args":["server"],
+      "env": {
+        "HUGGINGFACE_HUB_CACHE":"C:/Users/windy/.cache/huggingface/hub",
+        "IN_MEMORIA_EMBEDDING_MODEL":"Xenova/all-MiniLM-L6-v2",
+        "IN_MEMORIA_EMBEDDING_DIMENSION":"384",
+        "TRANSFORMERS_OFFLINE":"true",
+        "IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY":"true"
+      },
+      "disabled":false,
+      "autoApprove": [
+        "get_project_blueprint",
+        "analyze_codebase",
+        "search_codebase",
+        "learn_codebase_intelligence",
+        "get_semantic_insights",
+        "get_intelligence_metrics"
+      ]
+    }
+  }
+}

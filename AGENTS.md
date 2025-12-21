@@ -19,9 +19,9 @@
 ## Testing Guidelines
 - Framework: Vitest (`vitest.config.ts`) with Node environment, globals enabled, and coverage thresholds at ~60% for lines/branches/functions/statements.
 - Unit tests live beside code under `src/**/*.{test,spec}.ts`; integration flows reside in `tests/`. Use `setup.ts` in `src/__tests__/` for shared fixtures/mocks.
-- Prefer deterministic tests; integration suites may require SQLite access and optional vector backends (Qdrant/SurrealDB) configured via env vars before running.
+- Prefer deterministic tests; integration suites may require SQLite access and SurrealDB vector backend configured via env vars before running.
 
 ## Commit & Pull Request Guidelines
 - Commit messages are short, imperative summaries (e.g., `Add vector store integration`, `Fix DI import order`). Keep them focused on one change set.
-- Pull requests should describe the change, note relevant env/config updates (e.g., `IN_MEMORIA_VECTOR_BACKEND`, `QDRANT_URL`, `SURREAL_SYNC_DATA`), and include before/after notes or logs when touching runtime behavior.
+- Pull requests should describe the change, note relevant env/config updates (e.g., `SURREAL_SYNC_DATA`), and include before/after notes or logs when touching runtime behavior.
 - Always run `npm test` (and `npm run test:integration` if affected) before submitting; update docs in `docs/` or `README.md` when changing CLI flags, storage defaults, or server behaviors.

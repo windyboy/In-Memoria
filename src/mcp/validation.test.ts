@@ -13,7 +13,7 @@ describe('Input Validation', () => {
       const validInput = { path: '/test/path' };
       const result = validateInput(AnalyzeCodebaseSchema, validInput, 'test_tool');
       
-      expect(result).toEqual(validInput);
+      expect(result).toEqual({ path: '/test/path', includeFileContent: false });
     });
 
     it('should throw McpError for invalid input', () => {
@@ -111,7 +111,7 @@ describe('Input Validation', () => {
         expect(VALIDATION_SCHEMAS[toolName as keyof typeof VALIDATION_SCHEMAS]).toBeDefined();
       });
 
-      expect(Object.keys(VALIDATION_SCHEMAS)).toHaveLength(6);
+      expect(Object.keys(VALIDATION_SCHEMAS)).toHaveLength(8);
     });
 
     it('should have working schemas for all tools', () => {

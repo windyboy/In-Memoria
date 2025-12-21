@@ -2,52 +2,46 @@
 inclusion: always
 ---
 
-You have access to a long-term memory and codebase intelligence system via the In-Memoria MCP server.
+# In Memoria MCP Tools
 
-## Goals
-- Reduce “session amnesia” by reusing durable project knowledge.
-- Prefer retrieval before guessing.
-- Keep memory high-signal and project-scoped.
+8 codebase intelligence tools available.
 
-## Tool Policy (What to use, when)
+## Working Tools (8) - All Fixed!
+- `mcp_in_memoria_get_project_blueprint` - Tech stack + learning status ✅
+- `mcp_in_memoria_learn_codebase_intelligence` - Build intelligence (~30-60s) ✅
+- `mcp_in_memoria_search_codebase` - Search semantic/text/pattern with database fallback ✅
+- `mcp_in_memoria_analyze_codebase` - Analyze files/directories ✅
+- `mcp_in_memoria_get_semantic_insights` - Query learned concepts ✅
+- `mcp_in_memoria_get_intelligence_metrics` - System health ✅
+- `mcp_in_memoria_get_pattern_recommendations` - Pattern recommendations from codebase ✅
+- `mcp_in_memoria_predict_coding_approach` - Intelligent file routing and approach prediction ✅
 
-### 0) First step on any non-trivial task: check readiness
-- Use `get_learning_status` to see whether codebase intelligence exists and is fresh.
-- If no intelligence exists, run `auto_learn_if_needed`.
-- If a new project / first time setup is needed, use `quick_setup`.
+## Recent Fixes (Restart MCP server to apply)
+1. **Search with fallback** - Added database fallback when vector search fails
+2. **Pattern recommendations** - Now returns actual patterns from the codebase
+3. **Coding approach** - Provides intelligent file suggestions based on problem description
+4. **Database access** - Exposed database through AnalysisService for read operations
 
-### 1) Retrieval before reasoning (default behavior)
-When continuing prior work, implementing a feature, or answering “how does this project do X”:
-- Prefer `get_semantic_insights` and/or `get_pattern_recommendations` first.
-- Use `predict_coding_approach` when choosing implementation strategy.
-- Use `get_developer_profile` only to align with established conventions/preferences.
+## Usage
 
-### 2) Codebase grounding (only when needed)
-If the answer requires direct evidence from the repository:
-- `get_project_structure` for navigation and boundaries.
-- `search_codebase` to find relevant usages.
-- `get_file_content` to confirm exact implementation details.
-- `analyze_codebase` for broad architecture/pattern discovery.
-- `generate_documentation` when asked to produce repo-based docs.
+**Always start with:**
+```typescript
+const blueprint = await mcp_in_memoria_get_project_blueprint();
+if (blueprint.learningStatus.recommendation === 'learning_recommended') {
+  await mcp_in_memoria_learn_codebase_intelligence({ path: '.' });
+}
+```
 
-### 3) Writing memory (high-signal only)
-Write only durable, reusable information:
-- Finalized decisions (architecture, conventions, constraints).
-- Stable workflows and “how we do X here”.
-- Repeated corrections or preferences.
+**Then search/analyze:**
+```typescript
+await mcp_in_memoria_search_codebase({ query: 'auth', type: 'semantic' });
+await mcp_in_memoria_analyze_codebase({ path: './src' });
+```
 
-How to write:
-- Prefer `contribute_insights` for explicit, structured, durable insights.
-- Use `auto_learn_if_needed` as a safe default when unsure whether learning exists.
+**Get intelligent recommendations:**
+```typescript
+await mcp_in_memoria_get_pattern_recommendations({ problemDescription: 'create a new service' });
+await mcp_in_memoria_predict_coding_approach({ problemDescription: 'add MCP tool' });
+```
 
-Do NOT store:
-- Raw logs, secrets, transient chat, speculative ideas.
-
-### 4) Operational / health checks
-When tool calls are slow, failing, or outputs look stale:
-- `get_system_status`, `get_intelligence_metrics`, `get_performance_status`.
-
-## Safety / Governance
-- Do not read unrelated files.
-- Ask for confirmation before large-scale analysis runs or broad file reads.
-- Never store credentials or personal data.
+All 8 tools are now fully functional!

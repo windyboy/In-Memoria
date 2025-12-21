@@ -327,9 +327,9 @@ export class SurrealVectorDB implements VectorStore {
       this.localModelRoot || this.findLocalModelRoot();
     if (discoveredLocalModel) {
       this.localModelRoot = discoveredLocalModel;
-      env.localModelPath = discoveredLocalModel;
-    } else {
-      env.localModelPath = this.preferredCacheDir;
+      // Set the cache directory to the Hugging Face hub directory
+      // This allows transformers.js to find models using standard HF structure
+      env.cacheDir = this.preferredCacheDir;
     }
 
     // Always allow local models; optionally disable remote fetches when offline
@@ -465,44 +465,56 @@ export class SurrealVectorDB implements VectorStore {
     this.localModelRoot = this.localModelRoot || this.findLocalModelRoot();
     const hasLocalModel = !!this.localModelRoot;
 
-    if (this.offlineMode) {
-      if (!hasLocalModel) {
-        Logger.info(
-          "🔄 Offline/local-only mode without cached model assets; using fallback embedding method",
-        );
-        this.transformersFailed = true;
-        return;
-      }
-      if (this.transformersEnv) {
-        this.transformersEnv.localModelPath = this.localModelRoot;
-      }
+    if (this.offlineMode && !hasLocalModel) {
+      Logger.info(
+        "🔄 Offline/local-only mode without cached model assets; using fallback embedding method",
+      );
+      this.transformersFailed = true;
+      return;
     }
 
     try {
       Logger.info(
         `🔧 Initializing ${this.embeddingModel} embedding pipeline (${this.embeddingDimension}d)...`,
       );
-      Logger.debug(
-        `🔄 Creating feature-extraction pipeline with model: ${this.embeddingModel}`,
-      );
       
-      // Build pipeline options - use local files only if local model found
       const pipelineOptions: any = {};
-      if (hasLocalModel) {
-        pipelineOptions.local_files_only = true;
-        Logger.debug(`📍 Using local model files only from: ${this.localModelRoot}`);
+      
+      if (hasLocalModel && this.localModelRoot) {
+        // Use the snapshot directory directly as the model path
+        Logger.debug(`📍 Using local model files from snapshot: ${this.localModelRoot}`);
+        
+        const startTime = Date.now();
+        // Pass the local snapshot path directly to the pipeline
+        this.localEmbeddingPipeline = await pipelineFactory(
+          "feature-extraction",
+          this.localModelRoot, // Use the snapshot path directly
+          { local_files_only: true }
+        );
+        const loadTime = Date.now() - startTime;
+        Logger.info(
+          `✅ ${this.embeddingModel} pipeline ready (${this.embeddingDimension}d) in ${loadTime}ms`,
+        );
+      } else {
+        // Use standard model name with cache directory
+        Logger.debug(`🔄 Creating feature-extraction pipeline with model: ${this.embeddingModel}`);
+        
+        if (this.offlineMode) {
+          pipelineOptions.local_files_only = true;
+        }
+        
+        const startTime = Date.now();
+        this.localEmbeddingPipeline = await pipelineFactory(
+          "feature-extraction",
+          this.embeddingModel,
+          pipelineOptions,
+        );
+        const loadTime = Date.now() - startTime;
+        Logger.info(
+          `✅ ${this.embeddingModel} pipeline ready (${this.embeddingDimension}d) in ${loadTime}ms`,
+        );
       }
       
-      const startTime = Date.now();
-      this.localEmbeddingPipeline = await pipelineFactory(
-        "feature-extraction",
-        this.embeddingModel,
-        pipelineOptions, // Pass options to prevent network fetches
-      );
-      const loadTime = Date.now() - startTime;
-      Logger.info(
-        `✅ ${this.embeddingModel} pipeline ready (${this.embeddingDimension}d) in ${loadTime}ms`,
-      );
       Logger.debug(
         `📊 Model details: pooling=${this.embeddingPooling}, normalize=${this.embeddingNormalize}`,
       );

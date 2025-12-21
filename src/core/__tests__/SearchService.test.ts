@@ -1,20 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SearchServiceImpl } from '../services/SearchService.js';
-// SearchEngine import removed - legacy module deleted in Phase 3
+
 // Define minimal interfaces for testing
 interface SearchQuery {
   query: string;
   type: string;
   language?: string;
   limit?: number;
+  filters?: Record<string, any>;
 }
 
 interface SearchResult {
-  file: string;
+  id: string;
   content: string;
-  score: number;
-  context: string;
   metadata: Record<string, any>;
+  score: number;
+  filePath: string;
+  language: string;
 }
 
 interface SearchResponse {
@@ -45,10 +47,11 @@ describe('SearchService', () => {
       const mockResponse: SearchResponse = {
         results: [
           {
-            file: 'test.ts',
+            id: 'test-1',
             content: 'function test() {}',
             score: 0.9,
-            context: 'function test() {\n  return true;\n}',
+            filePath: 'test.ts',
+            language: 'typescript',
             metadata: {
               type: 'semantic',
               concept: 'test function',
@@ -75,7 +78,7 @@ describe('SearchService', () => {
         file: 'test.ts',
         content: 'function test() {}',
         score: 0.9,
-        context: 'function test() {\n  return true;\n}',
+        context: 'function test() {}',
         concept: 'test function',
         similarity: 0.9,
         metadata: {
@@ -83,7 +86,8 @@ describe('SearchService', () => {
           concept: 'test function',
           similarity: 0.9,
           searchType: 'semantic',
-          originalScore: 0.9
+          originalScore: 0.9,
+          language: 'typescript'
         }
       });
     });
@@ -106,10 +110,11 @@ describe('SearchService', () => {
       const mockResponse: SearchResponse = {
         results: [
           {
-            file: 'service.ts',
+            id: 'service-1',
             content: 'class UserService {}',
             score: 0.8,
-            context: 'export class UserService {\n  constructor() {}\n}',
+            filePath: 'service.ts',
+            language: 'typescript',
             metadata: {
               type: 'pattern',
               patternType: 'service_pattern',
@@ -137,7 +142,7 @@ describe('SearchService', () => {
         file: 'service.ts',
         content: 'class UserService {}',
         score: 0.8,
-        context: 'export class UserService {\n  constructor() {}\n}',
+        context: 'class UserService {}',
         patternType: 'service_pattern',
         confidence: 0.8,
         frequency: 5,
@@ -147,7 +152,8 @@ describe('SearchService', () => {
           confidence: 0.8,
           frequency: 5,
           searchType: 'pattern',
-          originalScore: 0.8
+          originalScore: 0.8,
+          language: 'typescript'
         }
       });
     });
@@ -158,10 +164,11 @@ describe('SearchService', () => {
       const mockResponse: SearchResponse = {
         results: [
           {
-            file: 'utils.ts',
+            id: 'utils-1',
             content: 'const testValue = "hello world";',
             score: 1.0,
-            context: '1: const testValue = "hello world";\n2: export { testValue };',
+            filePath: 'utils.ts',
+            language: 'typescript',
             metadata: {
               type: 'text',
               lineNumber: 1,
@@ -189,7 +196,7 @@ describe('SearchService', () => {
         file: 'utils.ts',
         content: 'const testValue = "hello world";',
         score: 1.0,
-        context: '1: const testValue = "hello world";\n2: export { testValue };',
+        context: 'const testValue = "hello world";',
         lineNumber: 1,
         matchStart: 20,
         matchLength: 11,
@@ -199,7 +206,8 @@ describe('SearchService', () => {
           matchStart: 20,
           matchLength: 11,
           searchType: 'text',
-          originalScore: 1.0
+          originalScore: 1.0,
+          language: 'typescript'
         }
       });
     });
@@ -230,13 +238,18 @@ describe('SearchService', () => {
   });
 
   describe('error handling', () => {
-    it('should handle search engine errors gracefully', async () => {
+    it('should handle search engine errors gracefully with fallback', async () => {
       const error = new Error('Search engine failed');
       (mockSearchEngine.search as any).mockRejectedValue(error);
 
-      await expect(searchService.searchSemantic('test')).rejects.toThrow('Search failed: Semantic search: Search engine failed');
-      await expect(searchService.searchPatterns('test')).rejects.toThrow('Search failed: Pattern search: Search engine failed');
-      await expect(searchService.searchText('test')).rejects.toThrow('Search failed: Text search: Search engine failed');
+      // With fallback logic, these should return empty arrays instead of throwing
+      const semanticResult = await searchService.searchSemantic('test');
+      const patternResult = await searchService.searchPatterns('test');
+      const textResult = await searchService.searchText('test');
+
+      expect(semanticResult).toEqual([]);
+      expect(patternResult).toEqual([]);
+      expect(textResult).toEqual([]);
     });
   });
 });

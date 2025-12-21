@@ -83,6 +83,8 @@ npx in-memoria --help
 
 ### Connect to Your AI Tool
 
+**📖 Complete Setup Guide**: See [MCP_SETUP.md](MCP_SETUP.md) for detailed instructions for all AI assistants.
+
 **Claude Desktop** - Add to your config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
@@ -102,7 +104,22 @@ npx in-memoria --help
 claude mcp add in-memoria -- npx in-memoria server
 ```
 
-**GitHub Copilot** - See [Copilot Integration](#github-copilot-integration) section below
+**Kiro IDE** - Add to `.kiro/settings/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "in-memoria": {
+      "command": "npx",
+      "args": ["in-memoria", "server"],
+      "disabled": false,
+      "autoApprove": ["get_project_blueprint", "analyze_codebase"]
+    }
+  }
+}
+```
+
+**GitHub Copilot** - See [MCP_SETUP.md](MCP_SETUP.md) for integration details
 
 ### Learn Your Codebase
 
@@ -157,22 +174,11 @@ In Memoria is built on Rust + TypeScript, using the Model Context Protocol to co
 **Storage** - Local-first:
 
 - Everything stays on your machine
-- SQLite for patterns and metadata
-- SurrealDB with SurrealKV backend for persistent vector embeddings (default)
-- Optional: External Qdrant for vectors by setting `IN_MEMORIA_VECTOR_BACKEND=qdrant` plus `QDRANT_URL`/`QDRANT_API_KEY`/`QDRANT_COLLECTION`
-- Local transformers.js for embeddings (Xenova/all-MiniLM-L6-v2) that read/write from the Hugging Face cache (`IN_MEMORIA_EMBEDDING_CACHE_DIR` → `HUGGINGFACE_HUB_CACHE` → `HF_HOME/hub`), never the transformers.js default cache
-  - Set `IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY=true` (or `TRANSFORMERS_OFFLINE=true`) to disable remote model fetches; ensure the Hugging Face cache already contains the model
-
-### Using an external Qdrant vector DB
-
-1. Run a Qdrant instance you can reach (self-hosted or managed).
-2. Set env vars before starting In Memoria:
-   - `IN_MEMORIA_VECTOR_BACKEND=qdrant`
-   - `QDRANT_URL=https://your-qdrant-host` (or `http://localhost:6333`)
-   - `QDRANT_API_KEY=...` (if your Qdrant requires it)
-   - `QDRANT_COLLECTION=in-memoria` (optional, defaults to this)
-3. Ensure your embedding dimension matches the collection (default 384 for `Xenova/all-MiniLM-L6-v2`). If you override the model/dimension (`IN_MEMORIA_EMBEDDING_MODEL` / `IN_MEMORIA_EMBEDDING_DIMENSION`), create a Qdrant collection with the same dimension or let In Memoria create it.
-4. Start the server/CLI as usual; vectors will be stored/searched in Qdrant, while SQLite remains local for structured data.
+- SQLite for structured data, SurrealDB with SurrealKV backend for persistent vector embeddings
+- Local transformers.js for embeddings (Xenova/all-MiniLM-L6-v2) that read/write from the Hugging Face cache
+  - **Cache priority**: `IN_MEMORIA_EMBEDDING_CACHE_DIR` → `HUGGINGFACE_HUB_CACHE` → `HF_HOME/hub`
+  - **Use existing cache**: If you've downloaded models with `hf download`, set `HUGGINGFACE_HUB_CACHE` to your cache directory
+  - **Offline mode**: Set `TRANSFORMERS_OFFLINE=true` to disable remote fetches and use local cache only
 
 ### What Makes It Different
 
@@ -207,38 +213,38 @@ No more janky console spam. Progress bars update in-place with consistent 500ms 
 
 ## MCP Tools for AI Assistants
 
-In Memoria provides **13 specialized tools** that AI assistants can call via MCP. They're organized into 4 categories (down from 16 after Phase 4 consolidation merged redundant tools):
+In Memoria provides **8 specialized tools** that AI assistants can call via MCP. They're organized into 3 categories:
 
 ### 🎯 Core Analysis (2 tools)
 
-- `analyze_codebase` - Analyze files/directories with concepts, patterns, complexity (Phase 4: now handles both files and directories)
+- `analyze_codebase` - Analyze files/directories with concepts, patterns, complexity
 - `search_codebase` - Multi-mode search (semantic/text/pattern)
 
-### 🧠 Intelligence (7 tools)
+### 🧠 Intelligence (5 tools)
 
 - `learn_codebase_intelligence` - Deep learning to extract patterns and architecture
-- `get_project_blueprint` - Instant project context with tech stack and entry points ⭐ (Phase 4: includes learning status)
+- `get_project_blueprint` - Instant project context with tech stack and entry points ⭐ (includes learning status)
 - `get_semantic_insights` - Query learned concepts and relationships
-- `get_pattern_recommendations` - Get patterns with related files for consistency
-- `predict_coding_approach` - Implementation guidance with file routing ⭐
-- `get_developer_profile` - Access coding style and work context
-- `contribute_insights` - Record architectural decisions
+- `get_pattern_recommendations` - Get patterns with related files for consistency ⚠️ (basic implementation)
+- `predict_coding_approach` - Implementation guidance with file routing ⚠️ (basic implementation)
 
-### 🤖 Automation (1 tool)
+### 📊 Monitoring (1 tool)
 
-- `auto_learn_if_needed` - Smart auto-learning with staleness detection ⭐ (Phase 4: includes quick setup functionality)
-
-### 📊 Monitoring (3 tools)
-
-- `get_system_status` - Health check
 - `get_intelligence_metrics` - Analytics on learned patterns
-- `get_performance_status` - Performance diagnostics
 
-**Phase 4 Consolidation**: Three tools were merged into existing tools for better AX (agent experience haha):
+**Phase 4 Status**: The following tools are mentioned in documentation but not yet implemented:
 
-- ~~get_file_content~~ → merged into `analyze_codebase`
-- ~~get_learning_status~~ → merged into `get_project_blueprint`
-- ~~quick_setup~~ → merged into `auto_learn_if_needed`
+- ❌ `auto_learn_if_needed` - Use `learn_codebase_intelligence` instead
+- ❌ `contribute_insights` - Not yet implemented  
+- ❌ `get_developer_profile` - Not yet implemented
+- ❌ `get_system_status` - Not yet implemented
+- ❌ `get_performance_status` - Not yet implemented
+
+**Current Implementation Status**:
+- ✅ Core analysis tools are fully functional
+- ✅ Learning and blueprint tools work well
+- ⚠️ Pattern recommendations return basic responses (service layer incomplete)
+- ⚠️ Coding approach prediction returns basic responses (service layer incomplete)
 
 > **For AI agents**: See [`AGENT.md`](AGENT.md) for complete tool reference with usage patterns and decision trees.
 

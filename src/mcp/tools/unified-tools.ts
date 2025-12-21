@@ -26,22 +26,13 @@ import { SemanticEngine } from "../../utils/semantic-engine.js";
 import { PatternEngine } from "../../utils/pattern-engine.js";
 import { SQLiteDatabase } from "../../storage/sqlite-db.js";
 import { VectorStore } from "../../storage/vector-store.js";
-import { readFileSync, statSync, readdirSync, lstatSync } from "fs";
-import { join, relative, extname, basename } from "path";
+import { readFileSync, statSync } from "fs";
 import { detectLanguageFromPath } from "../../utils/language-registry.js";
 import {
-    ErrorFactory,
-    MCPErrorUtils,
-    ErrorUtils,
-    InMemoriaError,
-    MCPErrorCode,
     ValidationError,
     PathValidationError,
-    AnalysisError,
 } from "../../utils/error-types.js";
 import { PathValidator } from "../../utils/path-validator.js";
-import { nanoid } from "nanoid";
-import path from "path";
 
 export class UnifiedMCPTools {
     constructor(

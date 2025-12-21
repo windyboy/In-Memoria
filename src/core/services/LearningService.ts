@@ -179,7 +179,7 @@ class LearningServiceImpl implements LearningService {
   constructor(
     private semanticEngine: SemanticEngine,
     private patternEngine: PatternEngine,
-    private database: SQLiteDatabase
+    private db: SQLiteDatabase
   ) {
     // Initialize single vector backend (SurrealDB) through unified interface - consolidation per requirement 6.1
     this.vectorStore = createVectorStore();
@@ -228,7 +228,7 @@ class LearningServiceImpl implements LearningService {
       }
 
       // Check if already learned and implement idempotent behavior
-      const existingMetadata = this.database.getProjectMetadata(projectPath);
+      const existingMetadata = this.db.getProjectMetadata(projectPath);
       if (!options.force && existingMetadata && existingMetadata.lastFullScan) {
         // Idempotent update: only update timestamp and return existing counts
         Logger.info(`Performing idempotent update for already learned project: ${projectPath}`);
@@ -238,9 +238,9 @@ class LearningServiceImpl implements LearningService {
         await this.updateProjectMetadataTimestamp(projectPath);
         
         // Get existing counts for response
-        const existingConcepts = this.database.getSemanticConcepts().length;
-        const existingPatterns = this.database.getDeveloperPatterns().length;
-        const existingFeatures = this.database.getFeatureMaps(projectPath).length;
+        const existingConcepts = this.db.getSemanticConcepts().length;
+        const existingPatterns = this.db.getDeveloperPatterns().length;
+        const existingFeatures = this.db.getFeatureMaps(projectPath).length;
         
         return {
           success: true,
@@ -294,9 +294,6 @@ class LearningServiceImpl implements LearningService {
       // Store concepts with idempotent behavior (single writer)
       await this.storeSemanticConceptsInternal(concepts);
       conceptsLearned = concepts.length;
-      
-      // Build vector index for significant concepts (single writer)
-      await this.buildVectorIndexForConcepts(extractedConcepts.filter(c => c.confidence > 0.5));
       
       this.progressTracker.updateProgress('semantic_analysis', 100, `Stored ${conceptsLearned} concepts`);
       Logger.info(`Semantic analysis complete. Learned ${conceptsLearned} concepts`);
@@ -442,7 +439,7 @@ class LearningServiceImpl implements LearningService {
       }
       
       // Store metadata using database (single writer)
-      this.database.insertProjectMetadata({
+      this.db.insertProjectMetadata({
         projectId: nanoid(),
         projectPath: metadata.projectPath,
         projectName: projectPath.split('/').pop() || 'unknown',
@@ -528,11 +525,11 @@ class LearningServiceImpl implements LearningService {
       // We'll filter by ID instead
       let existingConcepts: DBSemanticConcept[];
       try {
-        existingConcepts = this.database.getSemanticConcepts(concept.filePath);
+        existingConcepts = this.db.getSemanticConcepts(concept.filePath);
       } catch (error) {
         // Fallback: get all concepts and filter by ID
         Logger.debug('Could not filter by filePath, using ID-based lookup');
-        existingConcepts = this.database.getSemanticConcepts();
+        existingConcepts = this.db.getSemanticConcepts();
       }
       
       const existingConcept = existingConcepts.find(c => c.id === concept.id);
@@ -542,7 +539,7 @@ class LearningServiceImpl implements LearningService {
         if (concept.confidenceScore > existingConcept.confidenceScore || 
             concept.filePath !== existingConcept.filePath) {
           Logger.debug(`Updating existing concept: ${concept.id}`);
-          this.database.insertSemanticConcept({
+          this.db.insertSemanticConcept({
             ...concept,
             updatedAt: new Date()
           });
@@ -551,7 +548,7 @@ class LearningServiceImpl implements LearningService {
         }
       } else {
         // Insert new concept
-        this.database.insertSemanticConcept(concept);
+        this.db.insertSemanticConcept(concept);
       }
     }
   }
@@ -569,13 +566,13 @@ class LearningServiceImpl implements LearningService {
   }>): Promise<void> {
     for (const featureMap of featureMaps) {
       // Check if feature map already exists to maintain idempotency
-      const existingFeatures = this.database.getFeatureMaps(projectPath);
+      const existingFeatures = this.db.getFeatureMaps(projectPath);
       const existingFeature = existingFeatures.find(f => f.id === featureMap.id || f.featureName === featureMap.featureName);
       
       if (existingFeature) {
         // Update existing feature map
         Logger.debug(`Updating existing feature map: ${featureMap.featureName}`);
-        this.database.insertFeatureMap({
+        this.db.insertFeatureMap({
           id: existingFeature.id,
           projectPath,
           featureName: featureMap.featureName,
@@ -586,7 +583,7 @@ class LearningServiceImpl implements LearningService {
         });
       } else {
         // Insert new feature map
-        this.database.insertFeatureMap({
+        this.db.insertFeatureMap({
           id: featureMap.id,
           projectPath,
           featureName: featureMap.featureName,
@@ -606,20 +603,20 @@ class LearningServiceImpl implements LearningService {
   private async storeDeveloperPatternsInternal(patterns: any[]): Promise<void> {
     for (const pattern of patterns) {
       // Check if pattern already exists to maintain idempotency
-      const existingPatterns = this.database.getDeveloperPatterns(pattern.patternType);
+      const existingPatterns = this.db.getDeveloperPatterns(pattern.patternType);
       const existingPattern = existingPatterns.find(p => p.patternId === pattern.patternId);
       
       if (existingPattern) {
         // Update frequency and last seen timestamp for idempotent behavior
         Logger.debug(`Updating existing pattern: ${pattern.patternId}`);
-        this.database.insertDeveloperPattern({
+        this.db.insertDeveloperPattern({
           ...existingPattern,
           frequency: Math.max(existingPattern.frequency, pattern.frequency),
           confidence: Math.max(existingPattern.confidence, pattern.confidence)
         });
       } else {
         // Insert new pattern
-        this.database.insertDeveloperPattern(pattern);
+        this.db.insertDeveloperPattern(pattern);
       }
     }
   }
@@ -635,13 +632,13 @@ class LearningServiceImpl implements LearningService {
       Logger.info(`Updating pattern usage statistics for: ${change.path}`);
 
       // Track usage of different patterns based on file content (limit to 100 most common)
-      const patterns = this.database.getDeveloperPatterns(undefined, 100);
+      const patterns = this.db.getDeveloperPatterns(undefined, 100);
       
       for (const pattern of patterns) {
         // Check if pattern is used in the changed file
         if (this.isPatternUsedInContent(pattern, change.content, change.language)) {
           // Update pattern frequency (single writer)
-          this.database.insertDeveloperPattern({
+          this.db.insertDeveloperPattern({
             ...pattern,
             frequency: pattern.frequency + 1
           });
@@ -666,19 +663,19 @@ class LearningServiceImpl implements LearningService {
       // Update local pattern database based on analysis
       if (analysisData.patterns && analysisData.patterns.detected) {
         for (const patternType of analysisData.patterns.detected) {
-          const existingPatterns = this.database.getDeveloperPatterns(patternType);
+          const existingPatterns = this.db.getDeveloperPatterns(patternType);
           
           if (existingPatterns.length > 0) {
             // Increment frequency of detected pattern (single writer)
             const pattern = existingPatterns[0];
-            this.database.insertDeveloperPattern({
+            this.db.insertDeveloperPattern({
               ...pattern,
               frequency: pattern.frequency + 1,
               confidence: Math.min(1.0, pattern.confidence + 0.05)
             });
           } else {
             // Create new pattern entry (single writer)
-            this.database.insertDeveloperPattern({
+            this.db.insertDeveloperPattern({
               patternId: nanoid(),
               patternType,
               patternContent: { 
@@ -741,17 +738,18 @@ class LearningServiceImpl implements LearningService {
     try {
       await this.vectorStore.initialize('in-memoria-intelligence');
 
-      // Create embeddings for concepts
-      for (const concept of concepts) {
-        const text = `${concept.name} ${concept.type}`;
+      // Create embeddings for high-confidence concepts only (avoid duplicates)
+      const highConfidenceConcepts = concepts.filter(c => c.confidenceScore > 0.5);
+      for (const concept of highConfidenceConcepts) {
+        const text = `${concept.conceptName} ${concept.conceptType}`;
         await this.vectorStore.storeCodeEmbedding(text, {
           id: concept.id,
           filePath: concept.filePath,
-          functionName: concept.type === 'function' ? concept.name : undefined,
-          className: concept.type === 'class' ? concept.name : undefined,
-          language: 'unknown',
-          complexity: 1,
-          lineCount: 1,
+          functionName: concept.conceptType === 'function' ? concept.conceptName : undefined,
+          className: concept.conceptType === 'class' ? concept.conceptName : undefined,
+          language: this.detectLanguageFromPath(concept.filePath),
+          complexity: Math.floor(concept.confidenceScore * 10),
+          lineCount: concept.lineRange ? concept.lineRange.end - concept.lineRange.start + 1 : 1,
           lastModified: new Date()
         });
       }
@@ -770,33 +768,6 @@ class LearningServiceImpl implements LearningService {
       }
     } catch (error) {
       Logger.warn('Failed to build vector index:', error);
-      // Don't throw - vector indexing is optional
-    }
-  }
-
-  /**
-   * Build vector index for extracted concepts (single writer)
-   */
-  private async buildVectorIndexForConcepts(concepts: any[]): Promise<void> {
-    try {
-      await this.vectorStore.initialize('in-memoria-intelligence');
-
-      // Create embeddings for significant concepts
-      for (const concept of concepts) {
-        const text = `${concept.name} ${concept.type}`;
-        await this.vectorStore.storeCodeEmbedding(text, {
-          id: concept.id,
-          filePath: concept.filePath,
-          functionName: concept.type === 'function' ? concept.name : undefined,
-          className: concept.type === 'class' ? concept.name : undefined,
-          language: this.detectLanguageFromPath(concept.filePath),
-          complexity: Math.floor(concept.confidence * 10),
-          lineCount: concept.lineRange.end - concept.lineRange.start + 1,
-          lastModified: new Date()
-        });
-      }
-    } catch (error) {
-      Logger.warn('Failed to build vector index for concepts:', error);
       // Don't throw - vector indexing is optional
     }
   }
@@ -832,14 +803,14 @@ class LearningServiceImpl implements LearningService {
   private async checkExistingIntelligence(projectPath: string): Promise<{ concepts: number; patterns: number } | null> {
     try {
       // Check project metadata to see if learning has been completed
-      const metadata = this.database.getProjectMetadata(projectPath);
+      const metadata = this.db.getProjectMetadata(projectPath);
       if (!metadata || !metadata.lastFullScan) {
         return null;
       }
 
       // Get actual counts from the database
-      const concepts = this.database.getSemanticConcepts().length;
-      const patterns = this.database.getDeveloperPatterns().length;
+      const concepts = this.db.getSemanticConcepts().length;
+      const patterns = this.db.getDeveloperPatterns().length;
 
       if (concepts > 0 || patterns > 0) {
         Logger.info(`Found existing intelligence: ${concepts} concepts, ${patterns} patterns`);
@@ -881,8 +852,8 @@ class LearningServiceImpl implements LearningService {
         }
         
         // Close database connections gracefully
-        if (this.database) {
-          this.database.close();
+        if (this.db) {
+          this.db.close();
         }
         
         Logger.info('Learning process shutdown complete');
@@ -908,9 +879,9 @@ class LearningServiceImpl implements LearningService {
     patternCount: number;
   }> {
     try {
-      const metadata = this.database.getProjectMetadata(projectPath);
-      const conceptCount = this.database.getSemanticConcepts().length;
-      const patternCount = this.database.getDeveloperPatterns().length;
+      const metadata = this.db.getProjectMetadata(projectPath);
+      const conceptCount = this.db.getSemanticConcepts().length;
+      const patternCount = this.db.getDeveloperPatterns().length;
 
       return {
         isLearned: !!metadata?.lastFullScan,
@@ -944,7 +915,7 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.warn(`storeAIInsight called but ai_insights table was dropped in migration 8. Operation ignored for: ${insight.insightId}`);
       // Database method is stubbed and will log warning, but we complete successfully
-      this.database.insertAIInsight({
+      this.db.insertAIInsight({
         insightId: insight.insightId,
         insightType: insight.insightType,
         insightContent: insight.insightContent,
@@ -975,7 +946,7 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.warn(`createWorkSession called but work_sessions table was dropped in migration 8. Operation ignored for: ${session.id}`);
       // Database method is stubbed and will log warning, but we complete successfully
-      this.database.createWorkSession(session);
+      this.db.createWorkSession(session);
     } catch (error) {
       Logger.error('Failed to create work session:', error);
       throw translateError(error, 'Work session creation');
@@ -994,7 +965,7 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.warn(`updateWorkSession called but work_sessions table was dropped in migration 8. Operation ignored for: ${sessionId}`);
       // Database method is stubbed and will log warning, but we complete successfully
-      this.database.updateWorkSession(sessionId, updates);
+      this.db.updateWorkSession(sessionId, updates);
     } catch (error) {
       Logger.error('Failed to update work session:', error);
       throw translateError(error, 'Work session update');
@@ -1015,7 +986,7 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.warn(`storeProjectDecision called but project_decisions table was dropped in migration 8. Operation ignored for: ${decision.decisionKey}`);
       // Database method is stubbed and will log warning, but we complete successfully
-      this.database.upsertProjectDecision({
+      this.db.upsertProjectDecision({
         id: decision.id,
         projectPath: decision.projectPath,
         decisionKey: decision.decisionKey,
@@ -1043,7 +1014,7 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.warn(`storeEntryPoint called but entry_points table was dropped in migration 8. Operation ignored for: ${entryPoint.filePath}`);
       // Database method is stubbed and will log warning, but we complete successfully
-      this.database.insertEntryPoint(entryPoint);
+      this.db.insertEntryPoint(entryPoint);
     } catch (error) {
       Logger.error('Failed to store entry point:', error);
       throw translateError(error, 'Entry point storage');
@@ -1065,7 +1036,7 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.warn(`storeKeyDirectory called but key_directories table was dropped in migration 8. Operation ignored for: ${directory.directoryPath}`);
       // Database method is stubbed and will log warning, but we complete successfully
-      this.database.insertKeyDirectory(directory);
+      this.db.insertKeyDirectory(directory);
     } catch (error) {
       Logger.error('Failed to store key directory:', error);
       throw translateError(error, 'Key directory storage');
@@ -1081,10 +1052,10 @@ class LearningServiceImpl implements LearningService {
     try {
       Logger.info(`Updating timestamp for idempotent learning: ${projectPath}`);
       
-      const existingMetadata = this.database.getProjectMetadata(projectPath);
+      const existingMetadata = this.db.getProjectMetadata(projectPath);
       if (existingMetadata) {
         // Update the existing metadata with new timestamp
-        this.database.insertProjectMetadata({
+        this.db.insertProjectMetadata({
           projectId: existingMetadata.projectId,
           projectPath: existingMetadata.projectPath,
           projectName: existingMetadata.projectName,

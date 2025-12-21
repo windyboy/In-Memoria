@@ -82,8 +82,15 @@ export class AnalysisService {
   constructor(
     private semanticEngine: SemanticEngine,
     private patternEngine: PatternEngine,
-    private database: SQLiteDatabase
+    private db: SQLiteDatabase
   ) {}
+
+  /**
+   * Get access to the database for read operations
+   */
+  get database(): SQLiteDatabase {
+    return this.db;
+  }
 
   /**
    * Analyze a complete codebase and return comprehensive analysis results
@@ -255,7 +262,7 @@ export class AnalysisService {
       }
       
       // Get existing concepts from database (read-only)
-      const storedConcepts = this.database.getSemanticConcepts();
+      const storedConcepts = this.db.getSemanticConcepts();
       
       // Convert stored concepts to our interface
       const concepts: ExtractedConcept[] = storedConcepts.map(concept => ({

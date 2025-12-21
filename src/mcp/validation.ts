@@ -3,7 +3,8 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
 // Input validation schemas for all MCP tools
 export const AnalyzeCodebaseSchema = z.object({
-  path: z.string().min(1, 'Path is required')
+  path: z.string().min(1, 'Path is required'),
+  includeFileContent: z.boolean().optional().default(false)
 });
 
 export const SearchCodebaseSchema = z.object({
@@ -18,6 +19,12 @@ export const LearnCodebaseIntelligenceSchema = z.object({
   force: z.boolean().optional().default(false)
 });
 
+export const GetSemanticInsightsSchema = z.object({
+  query: z.string().optional(),
+  conceptType: z.string().optional(),
+  limit: z.number().int().min(1).max(50).optional().default(10)
+});
+
 // Phase 3: Whitelisted tool schemas only
 export const GetPatternRecommendationsSchema = z.object({
   problemDescription: z.string().min(1, 'Problem description is required'),
@@ -25,6 +32,12 @@ export const GetPatternRecommendationsSchema = z.object({
   selectedCode: z.string().optional(),
   preferences: z.record(z.string(), z.any()).optional(),
   includeRelatedFiles: z.boolean().optional()
+});
+
+export const PredictCodingApproachSchema = z.object({
+  problemDescription: z.string().min(1, 'Problem description is required'),
+  context: z.record(z.string(), z.any()).optional(),
+  includeFileRouting: z.boolean().optional().default(true)
 });
 
 export const GetProjectBlueprintSchema = z.object({
@@ -60,7 +73,9 @@ export const VALIDATION_SCHEMAS = {
   'analyze_codebase': AnalyzeCodebaseSchema,
   'search_codebase': SearchCodebaseSchema,
   'learn_codebase_intelligence': LearnCodebaseIntelligenceSchema,
+  'get_semantic_insights': GetSemanticInsightsSchema,
   'get_pattern_recommendations': GetPatternRecommendationsSchema,
+  'predict_coding_approach': PredictCodingApproachSchema,
   'get_project_blueprint': GetProjectBlueprintSchema,
   'get_intelligence_metrics': GetIntelligenceMetricsSchema
 } as const;
