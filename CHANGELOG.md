@@ -7,7 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### ✨ Added
+### 🏗️ **Major Architecture Refactor - Three-Layer Architecture**
+
+- **Dependency Injection Container** - Implemented comprehensive DI container system for service lifecycle management
+  - New `DIContainer` class with type-safe service registration and resolution
+  - Centralized service initialization through `initializeDIContainer()` bootstrap function
+  - Service keys system for type-safe dependency injection
+  - Container lifecycle management with proper disposal and cleanup
+  - Pre-initialization of core services for synchronous access
+
+- **Service Layer Implementation** - Established clear service boundaries with four core services
+  - **AnalysisService** (read-only) - Codebase analysis, language metrics, complexity metrics, concept extraction
+  - **LearningService** (write-only) - Single writer for all learning operations, enforces idempotent learning
+  - **SearchService** (read-only) - Unified search across semantic, text, and pattern-based queries
+  - **DiagnosticService** (read-only) - System health, metrics, and diagnostic information
+  - All services accessed through DI container, no direct imports allowed
+
+- **Architectural Guardrails** - Implemented comprehensive architectural enforcement
+  - Build-time verification scripts (`verify-architecture.ts`, `build-time-verification.ts`)
+  - Layer separation enforcement (CLI/MCP cannot import from core directly)
+  - File watching prohibition (no `fs.watch` or `chokidar` usage)
+  - Service isolation scoring and interface purity metrics
+  - Pre-commit hooks for architectural compliance
+
+- **Codebase Simplification** - Consolidated and streamlined project structure
+  - Removed legacy test scripts (`test-qdrant-*.js`, `test-env.js`, `verify-mcp-setup.js`)
+  - Enhanced dependency management with updated `bun.lock`
+  - Improved logging format consistency between Rust and TypeScript
+  - Added timeout and file size limits in pattern analysis for performance
+
+### 🔧 **Storage & Data Consistency Improvements**
+
+- **Storage fixes** - Corrected `lastFullScan` date parsing for platform compatibility
+  - Direct ISO timestamp string handling without timezone suffix appending
+  - Enhanced integration tests with conditional Windows platform skipping
+  - Schema migration tests updated to parse pattern content from JSON name column
+
+- **Vector Backend Abstraction** - Unified interface for vector storage backends
+  - Single vector store factory with backend abstraction layer
+  - Support for Qdrant and SurrealDB backends through unified interface
+  - Configurable embedding configuration per backend
+
+### ✨ **Added**
 
 - **Kotlin language support** - Added tree-sitter parser for Kotlin files (.kt) with symbol extraction, function/method queries, and pattern learning integration
 - **Markdown language support** - Added tree-sitter parser for Markdown files (.md) with document structure analysis and AST parsing

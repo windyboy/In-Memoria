@@ -7,12 +7,16 @@ In-Memoria is an intelligent MCP (Model Context Protocol) server that provides c
 
 ## Features
 
+- **Three-Layer Architecture**: Clean separation between interface, service, and storage layers
+- **Dependency Injection**: Centralized service management through DI container
+- **Service Layer**: Four core services (Analysis, Learning, Search, Diagnostic) with clear boundaries
 - **Semantic Code Search**: Find code by meaning, not just keywords
 - **Pattern Recognition**: Discover and apply coding patterns from your codebase
 - **Intelligent Code Analysis**: Understand code complexity, languages, and frameworks
 - **Smart File Routing**: Navigate to relevant files based on problem descriptions
 - **Coding Approach Suggestions**: Get implementation guidance based on learned patterns
-- **Vector Search**: Fast semantic search using embeddings (supports Qdrant or local storage)
+- **Vector Search**: Fast semantic search using embeddings (supports Qdrant or SurrealDB)
+- **Architectural Guardrails**: Build-time verification enforces design principles
 
 ## Prerequisites
 
@@ -26,6 +30,20 @@ In-Memoria is an intelligent MCP (Model Context Protocol) server that provides c
   - Install via Docker: `docker run -p 6333:6333 qdrant/qdrant`
   - Or use cloud-hosted Qdrant
 - **Python**: For some analysis features (auto-detected)
+
+## Architecture
+
+In-Memoria follows a **three-layer architecture** with dependency injection for clean separation of concerns:
+
+1. **Interface Layer** - CLI commands and MCP tools act as pure adapters with no business logic
+2. **Service Layer** - Four core services managed through DI container:
+   - `AnalysisService` - Read-only codebase analysis and metrics
+   - `LearningService` - Write-only learning operations (enforces single writer principle)
+   - `SearchService` - Unified semantic, text, and pattern-based search
+   - `DiagnosticService` - System health and diagnostic information
+3. **Storage Layer** - SQLite for structured data, unified vector store abstraction (Qdrant or SurrealDB)
+
+All business logic flows through the service layer, ensuring maintainability and testability. Architectural guardrails enforce layer separation and prevent regression.
 
 ## Installation
 

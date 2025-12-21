@@ -138,18 +138,49 @@ In Memoria is built on Rust + TypeScript, using the Model Context Protocol to co
 
 ### Architecture
 
+In Memoria follows a **three-layer architecture** with dependency injection for clean separation of concerns:
+
 ```
-┌─────────────────────┐    MCP     ┌──────────────────────┐    napi-rs    ┌─────────────────────┐
-│  AI Tool (Claude)   │◄──────────►│  TypeScript Server   │◄─────────────►│   Rust Core         │
-└─────────────────────┘            └──────────┬───────────┘               │  • AST Parser       │
-                                              │                           │  • Pattern Learner  │
-                                              │                           │  • Semantic Engine  │
-                                              ▼                           │  • Blueprint System │
-                                   ┌──────────────────────┐               └─────────────────────┘
-                                   │ SQLite (persistent)  │
-                                   │ SurrealDB (in-mem)   │
-                                   └──────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Interface Layer                           │
+│  ┌─────────────────┐           ┌─────────────────────────┐  │
+│  │   CLI Commands  │           │   MCP Server & Tools     │  │
+│  │  (Pure Adapters)│           │    (Pure Adapters)       │  │
+│  └─────────────────┘           └─────────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                    Service Layer                            │
+│  ┌─────────────────┐ ┌─────────────────┐ ┌───────────────┐ │
+│  │ AnalysisService │ │ LearningService │ │ SearchService │ │
+│  │   (Read Only)   │ │  (Write Only)   │ │  (Read Only)  │ │
+│  └─────────────────┘ └─────────────────┘ └───────────────┘ │
+│  ┌─────────────────┐           ┌─────────────────────────┐  │
+│  │DiagnosticService │           │     DI Container        │  │
+│  │   (Read Only)   │           │   (Orchestration)        │  │
+│  └─────────────────┘           └─────────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                    Storage Layer                            │
+│  ┌─────────────────┐           ┌─────────────────────────┐  │
+│  │   SQLite DB     │           │   Vector Store          │  │
+│  │ (4 tables only)│           │   (Qdrant/SurrealDB)    │  │
+│  └─────────────────┘           └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │   Rust Core (napi)   │
+                    │  • AST Parser        │
+                    │  • Pattern Learner  │
+                    │  • Semantic Engine   │
+                    │  • Blueprint System │
+                    └─────────────────────┘
 ```
+
+**Key Architectural Principles:**
+- **Layer Separation**: Interface layer (CLI/MCP) cannot import from core layer directly
+- **Service Isolation**: Services cannot import each other directly; orchestrated through DI container
+- **Single Writer**: Only `LearningService` performs write operations
+- **No File Watching**: Background watchers prohibited; all operations are on-demand
+- **Architectural Guardrails**: Build-time verification enforces architectural constraints
 
 ### The Core Components
 
@@ -162,13 +193,18 @@ In Memoria is built on Rust + TypeScript, using the Model Context Protocol to co
 
 **TypeScript Layer** - MCP server and orchestration:
 
-- **SearchEngine** - Unified semantic, text, and pattern-based search across codebases
+- **Dependency Injection Container** - Centralized service lifecycle management with type-safe resolution
+- **Service Layer** - Four core services (Analysis, Learning, Search, Diagnostic) with clear boundaries
+  - `AnalysisService` - Read-only codebase analysis and metrics
+  - `LearningService` - Write-only learning operations (single writer principle)
+  - `SearchService` - Unified semantic, text, and pattern-based search
+  - `DiagnosticService` - System health and diagnostic information
 - **PathValidator** - Security hardening with path traversal protection and project boundary enforcement
 - **RateLimiter** - DoS protection with configurable sliding-window rate limiting for MCP tools
 - **CircuitBreaker** - Resilience with automatic fallback to local storage when external services fail
-- 13 specialized tools for AI assistants (organized into 4 categories with extensible registry)
-- SQLite for structured data, SurrealDB with SurrealKV for persistent vector embeddings
-- File watching for incremental updates
+- **Architectural Guardrails** - Build-time verification scripts enforce layer separation and design principles
+- 13 specialized MCP tools for AI assistants (organized into 4 categories with extensible registry)
+- SQLite for structured data, unified vector store abstraction (Qdrant or SurrealDB)
 - Smart routing that maps features to files
 
 **Storage** - Local-first:
