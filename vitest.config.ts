@@ -58,7 +58,7 @@ export default defineConfig({
         clearMocks: true,
 
         // Setup files
-        setupFiles: ['./src/utils/test-setup.ts'],
+        setupFiles: [],
     },
 
     resolve: {

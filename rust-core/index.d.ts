@@ -110,7 +110,7 @@ export declare class PatternLearner {
 export declare class PatternLearningEngine {
   constructor()
   /**
-   * Learn patterns from an entire codebase
+   * Learn patterns from an entire codebase using optimized file cache
    *
    * # Safety
    * This function is marked unsafe for NAPI compatibility. It performs file system operations

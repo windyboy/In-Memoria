@@ -5,9 +5,6 @@ import { ServiceKey, ServiceType, ValidServiceKey } from './service-keys.js';
  */
 export interface DIContainerConfig {
   projectPath: string;
-  vectorBackendType?: string;
-  vectorBackendConfig?: any;
-  enableCircuitBreaker?: boolean;
 }
 
 /**

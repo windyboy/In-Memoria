@@ -476,7 +476,6 @@ export class UnifiedMCPAdapter {
       if (database) {
         const concepts = database.getSemanticConcepts();
         const patterns = database.getDeveloperPatterns();
-        const featureMaps = database.getFeatureMaps(process.cwd());
         
         const problemLower = args.problemDescription?.toLowerCase() || '';
         
@@ -492,11 +491,6 @@ export class UnifiedMCPAdapter {
           concept.conceptName.toLowerCase().includes(problemLower) ||
           concept.conceptType.toLowerCase().includes(problemLower) ||
           (concept.filePath && concept.filePath.toLowerCase().includes(problemLower))
-        );
-        
-        // Look for relevant feature maps
-        const relevantFeatures = featureMaps.filter(feature =>
-          feature.featureName.toLowerCase().includes(problemLower)
         );
         
         // Build suggestions based on problem type
@@ -523,28 +517,20 @@ export class UnifiedMCPAdapter {
         } else if (problemLower.includes('search') || problemLower.includes('query')) {
           suggestedFiles = [
             'src/core/services/SearchService.ts',
-            'src/storage/vector-db.ts'
+            'src/storage/sqlite-db.ts'
           ];
-          approach = "Extend search functionality in SearchService or vector database";
+          approach = "Extend search functionality in SearchService or storage layer";
           confidence = 0.8;
           suggestedPatterns = ['Search Pattern', 'Repository Pattern'];
           estimatedComplexity = "medium";
         } else if (problemLower.includes('database') || problemLower.includes('storage')) {
           suggestedFiles = [
-            'src/storage/sqlite-db.ts',
-            'src/storage/vector-db.ts'
+            'src/storage/sqlite-db.ts'
           ];
           approach = "Modify database schema or storage layer";
           confidence = 0.7;
           suggestedPatterns = ['Repository Pattern', 'Data Access Pattern'];
           estimatedComplexity = "high";
-        } else if (relevantFeatures.length > 0) {
-          // Use feature maps to suggest files
-          const feature = relevantFeatures[0];
-          suggestedFiles = [...feature.primaryFiles, ...feature.relatedFiles].slice(0, 5);
-          approach = `Work with the ${feature.featureName} feature components`;
-          confidence = 0.8;
-          estimatedComplexity = "medium";
         } else if (relevantConcepts.length > 0) {
           // Use relevant concepts to suggest files
           suggestedFiles = relevantConcepts
@@ -565,7 +551,7 @@ export class UnifiedMCPAdapter {
         return {
           approach,
           confidence,
-          reasoning: `Based on analysis of ${concepts.length} concepts, ${patterns.length} patterns, and ${featureMaps.length} features`,
+          reasoning: `Based on analysis of ${concepts.length} concepts and ${patterns.length} patterns`,
           suggestedFiles,
           suggestedPatterns,
           estimatedComplexity,

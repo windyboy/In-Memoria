@@ -5,8 +5,11 @@
 
 console.log('🔍 Testing In-Memoria embedding configuration...\n');
 
+import { homedir } from 'os';
+import { join } from 'path';
+
 // Set your Hugging Face cache directory
-process.env.HUGGINGFACE_HUB_CACHE = 'C:\\Users\\windy\\.cache\\huggingface\\hub';
+process.env.HUGGINGFACE_HUB_CACHE = join(homedir(), '.cache', 'huggingface', 'hub');
 process.env.TRANSFORMERS_OFFLINE = 'true';
 process.env.IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY = 'true';
 process.env.IN_MEMORIA_EMBEDDING_MODEL = 'Xenova/all-MiniLM-L6-v2';

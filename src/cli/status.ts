@@ -90,115 +90,55 @@ function formatStatusResult(data: {
   verbose?: boolean;
 }): void {
   console.log(`\nIn-Memoria Status for: ${data.learningStatus.projectPath}`);
-  
-  // Learning Status (always shown)
   console.log("\n=== Learning Status ===");
-  console.log(`Intelligence Available: ${data.learningStatus.hasIntelligence ? '✅ Yes' : '❌ No'}`);
-  console.log(`Data Freshness: ${data.learningStatus.isStale ? '⚠️  Stale' : '✅ Fresh'}`);
+  console.log(`Intelligence Available: ${data.learningStatus.hasIntelligence ? "✅ Yes" : "❌ No"}`);
   console.log(`Recommendation: ${formatRecommendation(data.learningStatus.recommendation)}`);
   console.log(`Message: ${data.learningStatus.message}`);
-  
+  if (data.learningStatus.lastLearningTime) {
+    console.log(`Last Learning: ${formatTimestamp(data.learningStatus.lastLearningTime)}`);
+  }
   if (data.verbose) {
     console.log(`Concepts Stored: ${data.learningStatus.conceptsStored}`);
     console.log(`Patterns Stored: ${data.learningStatus.patternsStored}`);
-    console.log(`Files in Project: ${data.learningStatus.filesInProject}`);
-    console.log(`Code Files: ${data.learningStatus.codeFilesInProject}`);
-    if (data.learningStatus.lastLearningTime) {
-      console.log(`Last Learning: ${formatTimestamp(data.learningStatus.lastLearningTime)}`);
-    }
   }
-  
-  // Health Status
+
   if (data.healthStatus) {
     console.log("\n=== System Health ===");
     console.log(`Overall Status: ${formatHealthStatus(data.healthStatus.status)}`);
     console.log(`Summary: ${data.healthStatus.summary}`);
-    console.log(`Last Checked: ${formatTimestamp(data.healthStatus.lastChecked)}`);
-    
-    if (data.verbose) {
-      console.log("\nComponent Health:");
-      console.log(`  Database: ${formatComponentStatus(data.healthStatus.components.database.status)}`);
-      console.log(`  Vector Store: ${formatComponentStatus(data.healthStatus.components.vectorStore.status)}`);
-      console.log(`  Intelligence: ${formatComponentStatus(data.healthStatus.components.intelligence.status)}`);
-      
-      // Show component details
-      if (data.healthStatus.components.database.dataCount) {
-        console.log(`    - Concepts: ${data.healthStatus.components.database.dataCount.concepts}`);
-        console.log(`    - Patterns: ${data.healthStatus.components.database.dataCount.patterns}`);
-      }
-      
-      if (data.healthStatus.components.vectorStore.responseTime) {
-        console.log(`    - Response Time: ${data.healthStatus.components.vectorStore.responseTime}ms`);
-      }
+    if (data.verbose && data.healthStatus.components.database.dataCount) {
+      console.log(`Concepts: ${data.healthStatus.components.database.dataCount.concepts}`);
+      console.log(`Patterns: ${data.healthStatus.components.database.dataCount.patterns}`);
     }
   }
-  
-  // Intelligence Metrics
+
   if (data.intelligenceMetrics) {
     console.log("\n=== Intelligence Metrics ===");
     console.log(`Total Concepts: ${data.intelligenceMetrics.concepts.total}`);
     console.log(`Total Patterns: ${data.intelligenceMetrics.patterns.total}`);
-    
     if (data.intelligenceMetrics.quality.averageConfidence !== undefined) {
-      console.log(`Average Confidence: ${(data.intelligenceMetrics.quality.averageConfidence * 100).toFixed(1)}%`);
+      console.log(
+        `Average Confidence: ${(data.intelligenceMetrics.quality.averageConfidence * 100).toFixed(1)}%`,
+      );
     }
-    
-    if (data.intelligenceMetrics.quality.highConfidenceRatio !== undefined) {
-      console.log(`High Confidence Ratio: ${(data.intelligenceMetrics.quality.highConfidenceRatio * 100).toFixed(1)}%`);
+    if (data.intelligenceMetrics.timestamps.lastConceptLearned) {
+      console.log(`Last Concept Update: ${formatTimestamp(data.intelligenceMetrics.timestamps.lastConceptLearned)}`);
     }
-    
-    if (data.verbose && data.intelligenceMetrics.concepts.breakdown) {
-      console.log("\nConcept Breakdown:");
-      Object.entries(data.intelligenceMetrics.concepts.breakdown.byType).forEach(([type, count]) => {
-        console.log(`  - ${type}: ${count}`);
-      });
-      
-      const conf = data.intelligenceMetrics.concepts.breakdown.byConfidence;
-      console.log(`\nConfidence Distribution: High(${conf.high}) Medium(${conf.medium}) Low(${conf.low})`);
-    }
-    
-    if (data.verbose && data.intelligenceMetrics.patterns.breakdown) {
-      console.log("\nPattern Breakdown:");
-      Object.entries(data.intelligenceMetrics.patterns.breakdown.byType).forEach(([type, count]) => {
-        console.log(`  - ${type}: ${count}`);
-      });
-      
-      const freq = data.intelligenceMetrics.patterns.breakdown.byFrequency;
-      console.log(`\nFrequency Distribution: Frequent(${freq.frequent}) Common(${freq.common}) Rare(${freq.rare})`);
-    }
-    
-    if (data.intelligenceMetrics.timestamps.lastConceptLearned || data.intelligenceMetrics.timestamps.lastPatternLearned) {
-      console.log("\nLast Updates:");
-      if (data.intelligenceMetrics.timestamps.lastConceptLearned) {
-        console.log(`  Concepts: ${formatTimestamp(data.intelligenceMetrics.timestamps.lastConceptLearned)}`);
-      }
-      if (data.intelligenceMetrics.timestamps.lastPatternLearned) {
-        console.log(`  Patterns: ${formatTimestamp(data.intelligenceMetrics.timestamps.lastPatternLearned)}`);
-      }
+    if (data.intelligenceMetrics.timestamps.lastPatternLearned) {
+      console.log(`Last Pattern Update: ${formatTimestamp(data.intelligenceMetrics.timestamps.lastPatternLearned)}`);
     }
   }
-  
-  // System Metrics
+
   if (data.systemMetrics) {
     console.log("\n=== System Metrics ===");
-    console.log(`Version: ${data.systemMetrics.version}`);
     console.log(`Node.js: ${data.systemMetrics.system.nodeVersion}`);
     console.log(`Platform: ${data.systemMetrics.system.platform}`);
     console.log(`Uptime: ${formatUptime(data.systemMetrics.system.uptime)}`);
-    
-    console.log("\nMemory Usage:");
-    console.log(`  RSS: ${data.systemMetrics.memory.rss} ${data.systemMetrics.memory.unit}`);
-    console.log(`  Heap Used: ${data.systemMetrics.memory.heapUsed} ${data.systemMetrics.memory.unit}`);
-    console.log(`  Heap Total: ${data.systemMetrics.memory.heapTotal} ${data.systemMetrics.memory.unit}`);
-    
-    console.log("\nDatabase Performance:");
-    console.log(`  Size: ${data.systemMetrics.database.size.mb} MB`);
-    console.log(`  Query Performance: ${data.systemMetrics.database.queryPerformance.performanceRating}`);
-    console.log(`  Concepts Query: ${data.systemMetrics.database.queryPerformance.conceptsMs}ms`);
-    console.log(`  Patterns Query: ${data.systemMetrics.database.queryPerformance.patternsMs}ms`);
+    console.log(`Concepts in DB: ${data.systemMetrics.database.conceptCount}`);
+    console.log(`Patterns in DB: ${data.systemMetrics.database.patternCount}`);
   }
-  
-  console.log(); // Final newline
+
+  console.log();
 }
 
 /**
@@ -235,25 +175,6 @@ function formatHealthStatus(status: string): string {
 
 /**
  * Format component status with appropriate emoji
- */
-function formatComponentStatus(status: string): string {
-  switch (status) {
-    case 'healthy':
-    case 'ready':
-      return '✅ Healthy';
-    case 'degraded':
-    case 'needs_learning':
-      return '⚠️  Degraded';
-    case 'error':
-    case 'unhealthy':
-      return '❌ Error';
-    default:
-      return status;
-  }
-}
-
-/**
- * Format timestamp for display
  */
 function formatTimestamp(timestamp: string): string {
   try {

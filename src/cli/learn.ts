@@ -12,11 +12,12 @@ export interface LearnArgs {
   path: string;
   force?: boolean;
   verbose?: boolean;
+  quick?: boolean;
 }
 
 /**
  * Pure CLI adapter for the learn command
- * 
+ *
  * This adapter contains no business logic - it only transforms CLI parameters
  * and delegates to the LearningService through the DI Container.
  */
@@ -29,22 +30,28 @@ export async function handleLearnCommand(args: LearnArgs): Promise<void> {
     } catch (error) {
       throw translateError(error, 'Path validation');
     }
-    
+
     // Initialize DI Container with project path
     const container = await initializeDIContainer({ projectPath });
-    
+
     // Transform CLI arguments to service options
     const options: any = {
       force: args.force || false,
-      progressCallback: createProgressCallback(args.verbose)
+      progressCallback: createProgressCallback(args.verbose),
+      maxFiles: args.quick ? 50 : undefined, // Limit to 50 files in quick mode
+      skipPatterns: args.quick ? true : false // Skip expensive pattern analysis in quick mode
     };
-    
+
+    if (args.quick) {
+      console.log('⚡ Quick learning mode enabled (limited to 50 files, pattern analysis skipped)');
+    }
+
     // Delegate to LearningService (no business logic in adapter)
     const result = await container.learningService.learnFromCodebase(projectPath, options);
-    
+
     // Transform service result to CLI output
     formatLearningResult(result, args.verbose);
-    
+
     // Set exit code based on result
     if (!result.success) {
       // Clean up resources before exiting with error
@@ -53,32 +60,32 @@ export async function handleLearnCommand(args: LearnArgs): Promise<void> {
       });
       process.exit(1);
     }
-    
-    // Clean up resources (close database and vector store connections)
+
+    // Clean up resources
     await disposeDIContainer().catch(() => {
       // Ignore cleanup errors
     });
-    
+
     // Exit successfully after learning completes
     process.exit(0);
-    
+
   } catch (error) {
     const standardizedError = translateError(error, 'Learn command');
     Logger.error('Learn command failed:', standardizedError);
     console.error(`❌ Learning failed [${standardizedError.code}]: ${standardizedError.message}`);
-    
+
     // Clean up resources on error
     await disposeDIContainer().catch(() => {
       // Ignore cleanup errors
     });
-    
+
     process.exit(1);
   }
 }
 
 /**
  * Create progress callback for CLI output
- * 
+ *
  * @param verbose - Whether to show verbose progress
  * @returns Progress callback function
  */
@@ -86,7 +93,7 @@ function createProgressCallback(verbose?: boolean) {
   if (!verbose) {
     // Simple milestone-based progress tracking for non-verbose mode
     let lastLoggedPercent = -1;
-    
+
     return (current: number, total: number, message: string) => {
       const percent = Math.floor((current / total) * 100);
       const milestone = Math.floor(percent / 25) * 25;
@@ -100,7 +107,7 @@ function createProgressCallback(verbose?: boolean) {
       }
     };
   }
-  
+
   // Verbose progress callback
   return (current: number, total: number, message: string) => {
     const percent = Math.floor((current / total) * 100);
@@ -110,7 +117,7 @@ function createProgressCallback(verbose?: boolean) {
 
 /**
  * Format learning result for CLI output
- * 
+ *
  * @param result - Learning result from service
  * @param verbose - Whether to show verbose output
  */
@@ -141,7 +148,7 @@ function formatLearningResult(result: any, verbose?: boolean): void {
 
 /**
  * Parse CLI arguments for learn command
- * 
+ *
  * @param args - Raw CLI arguments
  * @returns Parsed learn arguments
  */
@@ -149,6 +156,7 @@ export function parseLearnArgs(args: string[]): LearnArgs {
   const path = args.find(arg => !arg.startsWith('--')) || process.cwd();
   const force = args.includes('--force');
   const verbose = args.includes('--verbose');
-  
-  return { path, force, verbose };
+  const quick = args.includes('--quick');
+
+  return { path, force, verbose, quick };
 }

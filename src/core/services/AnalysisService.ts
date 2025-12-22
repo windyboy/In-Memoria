@@ -3,7 +3,7 @@ import { PatternEngine, PatternExtractionResult } from '../../utils/pattern-engi
 import { SQLiteDatabase } from '../../storage/sqlite-db.js';
 import { Logger } from '../../utils/logger.js';
 import { PathValidator } from '../../utils/path-validator.js';
-import { LearningError, PathError, translateError } from '../errors.js';
+import { translateError } from '../errors.js';
 
 /**
  * Language metrics for a codebase
@@ -241,46 +241,6 @@ export class AnalysisService {
     } catch (error) {
       Logger.error('Complexity metrics analysis failed:', error);
       throw translateError(error, 'Complexity metrics analysis');
-    }
-  }
-
-  /**
-   * Extract semantic concepts from a codebase
-   * 
-   * @param projectPath - Path to the project
-   * @returns Promise<ExtractedConcept[]> - Array of extracted concepts
-   */
-  async extractConcepts(projectPath: string): Promise<ExtractedConcept[]> {
-    try {
-      Logger.info(`Extracting concepts for: ${projectPath}`);
-      
-      // Validate the project path
-      try {
-        PathValidator.validateProjectPath(projectPath, 'AnalysisService.extractConcepts');
-      } catch (error) {
-        throw translateError(error, 'Path validation');
-      }
-      
-      // Get existing concepts from database (read-only)
-      const storedConcepts = this.db.getSemanticConcepts();
-      
-      // Convert stored concepts to our interface
-      const concepts: ExtractedConcept[] = storedConcepts.map(concept => ({
-        id: concept.id,
-        name: concept.conceptName,
-        type: concept.conceptType,
-        confidence: concept.confidenceScore,
-        filePath: concept.filePath,
-        lineRange: concept.lineRange,
-        relationships: concept.relationships
-      }));
-      
-      Logger.info(`Extracted ${concepts.length} concepts from database`);
-      return concepts;
-      
-    } catch (error) {
-      Logger.error('Concept extraction failed:', error);
-      throw translateError(error, 'Concept extraction');
     }
   }
 

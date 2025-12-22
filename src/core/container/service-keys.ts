@@ -24,17 +24,14 @@ export const ServiceKeys = {
   
   // Infrastructure dependencies
   DATABASE: createServiceKey<import('../../storage/sqlite-db.js').SQLiteDatabase>('database'),
-  VECTOR_STORE: createServiceKey<import('../../storage/vector-store.js').VectorStore>('vectorStore'),
   
   // Engines (to be wrapped by services)
   SEMANTIC_ENGINE: createServiceKey<import('../../utils/semantic-engine.js').SemanticEngine>('semanticEngine'),
   PATTERN_ENGINE: createServiceKey<import('../../utils/pattern-engine.js').PatternEngine>('patternEngine'),
-  // SEARCH_ENGINE removed - legacy module deleted in Phase 3
-  
+
   // Utilities
   LOGGER: createServiceKey<typeof import('../../utils/logger.js').Logger>('logger'),
   PATH_VALIDATOR: createServiceKey<typeof import('../../utils/path-validator.js').PathValidator>('pathValidator'),
-  CIRCUIT_BREAKER: createServiceKey<import('../../utils/circuit-breaker.js').CircuitBreaker>('circuitBreaker'),
 } as const;
 
 // Type helper to extract service type from service key

@@ -111,13 +111,20 @@ Usage: in-memoria <command> [options]
 
 Commands:
   server [path]             Start MCP server for AI assistant integration
-  learn [path]              Analyze codebase and build semantic intelligence database
+  learn [path] [options]    Analyze codebase and build semantic intelligence database
   analyze [path]            Show insights about codebase structure and patterns
   status [path]             Show learning status and system health information
   --version, -v             Display version information
 
+Learn Options:
+  --quick                   Fast learning mode (limits files, skips patterns)
+  --force                   Force re-learning even if already learned
+  --verbose                 Show detailed progress information
+
 Examples:
   in-memoria learn .                # Build intelligence from current directory
+  in-memoria learn . --quick        # Fast learning (recommended for first run)
+  in-memoria learn . --force        # Force complete re-learning
   in-memoria server                 # Start MCP server for AI assistants
   in-memoria server ./my-project    # Start server scoped to specific project
   in-memoria analyze ./lib          # Analyze library code insights
