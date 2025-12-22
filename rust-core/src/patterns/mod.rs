@@ -7,20 +7,24 @@
 // Core types and traits
 pub mod types;
 
+// File cache for efficient I/O
+pub mod file_cache;
+
 // Specialized pattern analyzers
-pub mod naming;
-pub mod structural;
 pub mod implementation;
-pub mod prediction;
 pub mod learning;
+pub mod naming;
+pub mod prediction;
+pub mod structural;
 
 // Re-export main types and analyzers
-pub use types::*;
-pub use naming::NamingPatternAnalyzer;
-pub use structural::StructuralPatternAnalyzer;
+pub use file_cache::{CachedFile, FileCache, FileCacheConfig};
 pub use implementation::ImplementationPatternAnalyzer;
-pub use prediction::ApproachPredictor;
 pub use learning::PatternLearningEngine;
+pub use naming::NamingPatternAnalyzer;
+pub use prediction::ApproachPredictor;
+pub use structural::StructuralPatternAnalyzer;
+pub use types::*;
 
 // Legacy compatibility - re-export the main pattern learning functionality
 // through the new modular engine
@@ -44,22 +48,28 @@ impl PatternLearner {
     }
 
     /// Learn patterns from an entire codebase
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe for NAPI compatibility. It performs file system operations
     /// and pattern analysis that are inherently safe but marked unsafe for JavaScript interop.
     #[cfg_attr(feature = "napi-bindings", napi)]
-    pub async unsafe fn learn_from_codebase(&mut self, path: String) -> Result<Vec<Pattern>, crate::types::ParseError> {
+    pub async unsafe fn learn_from_codebase(
+        &mut self,
+        path: String,
+    ) -> Result<Vec<Pattern>, crate::types::ParseError> {
         self.engine.learn_from_codebase(path).await
     }
 
     /// Extract patterns from a specific path
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe for NAPI compatibility. It performs file system operations
     /// and pattern analysis that are inherently safe but marked unsafe for JavaScript interop.
     #[cfg_attr(feature = "napi-bindings", napi)]
-    pub async unsafe fn extract_patterns(&self, path: String) -> Result<Vec<Pattern>, crate::types::ParseError> {
+    pub async unsafe fn extract_patterns(
+        &self,
+        path: String,
+    ) -> Result<Vec<Pattern>, crate::types::ParseError> {
         // Use spawn_blocking to avoid blocking the async runtime
         let path_clone = path.clone();
         let naming_task = tokio::task::spawn_blocking(move || {
@@ -108,7 +118,7 @@ impl PatternLearner {
     }
 
     /// Analyze file changes to identify patterns (original signature)
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe due to NAPI bindings requirements.
     /// It should only be called from properly initialized JavaScript contexts.
@@ -139,7 +149,7 @@ impl PatternLearner {
     }
 
     /// Find patterns relevant to a given problem description (original signature)
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe due to NAPI bindings requirements.
     /// It should only be called from properly initialized JavaScript contexts.
@@ -169,8 +179,12 @@ impl PatternLearner {
         // Find patterns matching the context using engine's learned patterns
         let learned_patterns = self.engine.get_learned_patterns();
         for pattern in learned_patterns {
-            let relevance_score =
-                self.calculate_pattern_relevance(&pattern, &keywords, &current_file, &selected_code);
+            let relevance_score = self.calculate_pattern_relevance(
+                &pattern,
+                &keywords,
+                &current_file,
+                &selected_code,
+            );
 
             if relevance_score > 0.5 {
                 relevant_patterns.push(pattern);
@@ -190,7 +204,7 @@ impl PatternLearner {
     }
 
     /// Predict coding approach based on problem description and context (original signature)
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe due to NAPI bindings requirements.
     /// It should only be called from properly initialized JavaScript contexts.
@@ -234,33 +248,45 @@ impl PatternLearner {
     }
 
     /// Learn from analysis data
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe for NAPI compatibility. It performs data parsing and
     /// learning operations that are inherently safe but marked unsafe for JavaScript interop.
     #[cfg_attr(feature = "napi-bindings", napi)]
-    pub async unsafe fn learn_from_analysis(&mut self, analysis_data: String) -> Result<bool, crate::types::ParseError> {
+    pub async unsafe fn learn_from_analysis(
+        &mut self,
+        analysis_data: String,
+    ) -> Result<bool, crate::types::ParseError> {
         self.engine.learn_from_analysis(analysis_data).await
     }
 
     /// Update pattern learner from change data (from original implementation)
-    /// 
+    ///
     /// # Safety
     /// This function is marked unsafe for NAPI compatibility. It performs data parsing and
     /// pattern update operations that are inherently safe but marked unsafe for JavaScript interop.
     #[cfg_attr(feature = "napi-bindings", napi)]
-    pub async unsafe fn update_from_change(&mut self, change_data: String) -> Result<bool, crate::types::ParseError> {
+    pub async unsafe fn update_from_change(
+        &mut self,
+        change_data: String,
+    ) -> Result<bool, crate::types::ParseError> {
         self.engine.update_from_change(change_data).await
     }
 
     // Helper methods from original implementation
 
-    fn detect_patterns_in_change(&self, _change_data: &str) -> Result<Vec<String>, crate::types::ParseError> {
+    fn detect_patterns_in_change(
+        &self,
+        _change_data: &str,
+    ) -> Result<Vec<String>, crate::types::ParseError> {
         // Detect which patterns are present in the change
         Ok(vec!["naming_camelCase_function".to_string()])
     }
 
-    fn detect_pattern_violations(&self, _change_data: &str) -> Result<Vec<String>, crate::types::ParseError> {
+    fn detect_pattern_violations(
+        &self,
+        _change_data: &str,
+    ) -> Result<Vec<String>, crate::types::ParseError> {
         // Detect violations of established patterns
         Ok(vec![])
     }
@@ -431,7 +457,7 @@ mod tests {
     async fn test_extract_patterns_internal() {
         let learner = PatternLearner::new();
         let result = unsafe { learner.extract_patterns("/test/path".to_string()).await };
-        
+
         assert!(result.is_ok());
         let patterns = result.unwrap();
         // Should have some patterns from the analyzers
@@ -446,10 +472,11 @@ mod tests {
             "file": "test.ts",
             "oldPath": "test.ts",
             "newPath": "test.ts"
-        }"#.to_string();
-        
+        }"#
+        .to_string();
+
         let result = learner.analyze_file_change_internal(change_data).await;
-        
+
         assert!(result.is_ok());
         let analysis = result.unwrap();
         assert!(!analysis.detected.is_empty());
@@ -459,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn test_find_relevant_patterns_internal() {
         let mut learner = PatternLearner::new();
-        
+
         // Add a test pattern to the engine first
         let pattern = Pattern {
             id: "test_function".to_string(),
@@ -474,14 +501,18 @@ mod tests {
             }],
             contexts: vec!["typescript".to_string()],
         };
-        learner.engine.insert_pattern("test_function".to_string(), pattern);
-        
-        let result = learner.find_relevant_patterns_internal(
-            "I need to create a function".to_string(),
-            Some("test.ts".to_string()),
-            None,
-        ).await;
-        
+        learner
+            .engine
+            .insert_pattern("test_function".to_string(), pattern);
+
+        let result = learner
+            .find_relevant_patterns_internal(
+                "I need to create a function".to_string(),
+                Some("test.ts".to_string()),
+                None,
+            )
+            .await;
+
         assert!(result.is_ok());
         let patterns = result.unwrap();
         assert!(!patterns.is_empty());
@@ -491,7 +522,7 @@ mod tests {
     #[tokio::test]
     async fn test_predict_approach_internal() {
         let mut learner = PatternLearner::new();
-        
+
         // Add test patterns
         let pattern = Pattern {
             id: "api_pattern".to_string(),
@@ -506,17 +537,18 @@ mod tests {
             }],
             contexts: vec!["express".to_string()],
         };
-        learner.engine.insert_pattern("api_pattern".to_string(), pattern);
-        
+        learner
+            .engine
+            .insert_pattern("api_pattern".to_string(), pattern);
+
         let mut context = std::collections::HashMap::new();
         context.insert("framework".to_string(), "express".to_string());
         context.insert("language".to_string(), "javascript".to_string());
-        
-        let result = learner.predict_approach_internal(
-            "Build a REST API endpoint".to_string(),
-            context,
-        ).await;
-        
+
+        let result = learner
+            .predict_approach_internal("Build a REST API endpoint".to_string(), context)
+            .await;
+
         assert!(result.is_ok());
         let prediction = result.unwrap();
         assert!(prediction.confidence > 0.0);
@@ -539,8 +571,9 @@ mod tests {
                     "patterns": ["service", "dependency_injection"]
                 }
             ]
-        }"#.to_string();
-        
+        }"#
+        .to_string();
+
         let result = unsafe { learner.learn_from_analysis(analysis_data).await };
         assert!(result.is_ok());
         let updated = result.unwrap();
@@ -550,14 +583,15 @@ mod tests {
     #[tokio::test]
     async fn test_update_from_change() {
         let mut learner = PatternLearner::new();
-        
+
         let change_data = r#"{
             "type": "modify",
             "path": "test.ts",
             "content": "function newName() {}",
             "language": "typescript"
-        }"#.to_string();
-        
+        }"#
+        .to_string();
+
         let result = unsafe { learner.update_from_change(change_data).await };
         assert!(result.is_ok());
         assert!(result.unwrap());
@@ -567,7 +601,7 @@ mod tests {
     fn test_extract_keywords() {
         let learner = PatternLearner::new();
         let keywords = learner.extract_keywords("Build a REST API endpoint using Express");
-        
+
         assert!(keywords.contains(&"build".to_string()));
         assert!(keywords.contains(&"rest".to_string()));
         assert!(keywords.contains(&"endpoint".to_string()));
@@ -579,15 +613,18 @@ mod tests {
     fn test_problem_complexity_estimation() {
         let learner = PatternLearner::new();
         let context = std::collections::HashMap::new();
-        
+
         let low = learner.estimate_problem_complexity("Simple task", &context);
         assert_eq!(low, ProblemComplexity::Low);
-        
-        let medium = learner.estimate_problem_complexity("Build a REST API with authentication and user management", &context);
+
+        let medium = learner.estimate_problem_complexity(
+            "Build a REST API with authentication and user management",
+            &context,
+        );
         assert_eq!(medium, ProblemComplexity::Medium);
-        
+
         let high = learner.estimate_problem_complexity(
-            "Design and implement a comprehensive microservices architecture with distributed caching, message queuing, service discovery, and fault tolerance", 
+            "Design and implement a comprehensive microservices architecture with distributed caching, message queuing, service discovery, and fault tolerance",
             &context
         );
         assert_eq!(high, ProblemComplexity::High);
@@ -605,10 +642,10 @@ mod tests {
             examples: vec![],
             contexts: vec!["javascript".to_string()],
         };
-        
+
         let keywords = vec!["function".to_string(), "javascript".to_string()];
         let relevance = learner.calculate_pattern_relevance(&pattern, &keywords, &None, &None);
-        
+
         assert!(relevance > 0.5);
     }
 
@@ -620,7 +657,7 @@ mod tests {
         let _implementation = ImplementationPatternAnalyzer::new();
         let _predictor = ApproachPredictor::new();
         let _engine = PatternLearningEngine::new();
-        
+
         // Test legacy compatibility
         let _legacy = PatternLearner::new();
     }
