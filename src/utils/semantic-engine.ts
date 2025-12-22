@@ -13,6 +13,8 @@ import {
 } from "../utils/performance-profiler.js";
 import { detectLanguageFromPath as resolveLanguageFromPath } from "../utils/language-registry.js";
 import { Logger } from "./logger.js";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 
 export interface CodebaseAnalysisResult {
   languages: string[];
@@ -132,9 +134,10 @@ export class SemanticEngine {
         const result = await this.rustCircuitBreaker.execute(
           async () => {
             const result = await this.rustAnalyzer!.analyzeCodebase(path);
+            const frameworks = this.filterFrameworks(result.frameworks || [], path);
             return {
               languages: result.languages,
-              frameworks: result.frameworks,
+              frameworks,
               complexity: {
                 cyclomatic: result.complexity.cyclomatic,
                 cognitive: result.complexity.cognitive,
@@ -539,6 +542,60 @@ export class SemanticEngine {
 
   private detectLanguageFromPath(filePath: string): string {
     return resolveLanguageFromPath(filePath);
+  }
+
+  /**
+   * Filter framework detection using package.json dependencies (and fall back to Rust detection if no match).
+   */
+  private filterFrameworks(rustFrameworks: string[], projectPath: string): string[] {
+    const rustSet = new Set(
+      (rustFrameworks || []).map((f) => f.toLowerCase().trim()).filter(Boolean),
+    );
+
+    const depFrameworks = this.detectFrameworksFromPackageJson(projectPath);
+    // If we have overlap, trust the intersection. Otherwise, prefer dependency-derived frameworks (if any).
+    const intersection = Array.from(rustSet).filter((f) => depFrameworks.has(f));
+    if (intersection.length > 0) {
+      return intersection;
+    }
+    if (depFrameworks.size > 0) {
+      return Array.from(depFrameworks);
+    }
+    // No signal from dependencies; return original list (could still be empty).
+    return Array.from(rustSet);
+  }
+
+  private detectFrameworksFromPackageJson(projectPath: string): Set<string> {
+    const frameworks = new Set<string>();
+    try {
+      const pkgPath = join(projectPath, "package.json");
+      if (!existsSync(pkgPath)) {
+        return frameworks;
+      }
+      const pkgRaw = readFileSync(pkgPath, "utf-8");
+      const pkg = JSON.parse(pkgRaw) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const deps = {
+        ...(pkg.dependencies || {}),
+        ...(pkg.devDependencies || {}),
+      };
+      Object.keys(deps).forEach((dep) => {
+        const name = dep.toLowerCase();
+        if (name === "react" || name === "next") frameworks.add("react");
+        if (name === "vue" || name === "nuxt") frameworks.add("vue");
+        if (name === "svelte" || name === "sveltekit") frameworks.add("svelte");
+        if (name === "express" || name === "fastify" || name === "koa" || name === "hapi") frameworks.add("express");
+        if (name === "nest" || name === "@nestjs/core") frameworks.add("nestjs");
+        if (name === "vite") frameworks.add("vite");
+        if (name === "webpack") frameworks.add("webpack");
+        if (name === "jest") frameworks.add("jest");
+      });
+    } catch (error) {
+      Logger.warn("Failed to parse package.json for framework detection:", error);
+    }
+    return frameworks;
   }
 
   /**

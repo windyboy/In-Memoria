@@ -1,10 +1,12 @@
 import { DIContainer, DIContainerConfig, Container } from "./container/container.js";
 import { ServiceKeys } from "./container/service-keys.js";
 import { SQLiteDatabase } from "../storage/sqlite-db.js";
+import { createVectorStore } from "../storage/vector-store.js";
 import { SemanticEngine } from "../utils/semantic-engine.js";
 import { PatternEngine } from "../utils/pattern-engine.js";
 import { Logger } from "../utils/logger.js";
 import { PathValidator } from "../utils/path-validator.js";
+import { EmbeddingEngine } from "../utils/embedding-engine.js";
 import { config } from "../utils/config.js";
 
 let globalContainer: DIContainer | null = null;
@@ -50,6 +52,10 @@ function registerInfrastructureServices(container: DIContainer, projectPath: str
         const dbPath = config.getDatabasePath(projectPath);
         return new SQLiteDatabase(dbPath);
     });
+
+    container.registerFactory(ServiceKeys.VECTOR_STORE, () => {
+        return createVectorStore(projectPath);
+    });
 }
 
 function registerEngineServices(container: DIContainer): void {
@@ -59,6 +65,10 @@ function registerEngineServices(container: DIContainer): void {
 
     container.registerFactory(ServiceKeys.PATTERN_ENGINE, async () => {
         return new PatternEngine();
+    });
+
+    container.registerFactory(ServiceKeys.EMBEDDING_ENGINE, async () => {
+        return new EmbeddingEngine();
     });
 }
 
@@ -76,13 +86,17 @@ function registerServiceLayer(container: DIContainer): void {
         const semanticEngine = await container.get(ServiceKeys.SEMANTIC_ENGINE);
         const patternEngine = await container.get(ServiceKeys.PATTERN_ENGINE);
         const database = await container.get(ServiceKeys.DATABASE);
-        return new LearningServiceImpl(semanticEngine, patternEngine, database);
+        const vectorStore = await container.get(ServiceKeys.VECTOR_STORE);
+        const embeddingEngine = await container.get(ServiceKeys.EMBEDDING_ENGINE);
+        return new LearningServiceImpl(semanticEngine, patternEngine, database, vectorStore, embeddingEngine);
     });
 
     container.registerFactory(ServiceKeys.SEARCH_SERVICE, async () => {
         const { SearchServiceImpl } = await import("./services/SearchService.js");
         const database = await container.get(ServiceKeys.DATABASE);
-        return new SearchServiceImpl(database);
+        const vectorStore = await container.get(ServiceKeys.VECTOR_STORE);
+        const embeddingEngine = await container.get(ServiceKeys.EMBEDDING_ENGINE);
+        return new SearchServiceImpl(database, vectorStore, embeddingEngine);
     });
 
     container.registerFactory(ServiceKeys.DIAGNOSTIC_SERVICE, async () => {

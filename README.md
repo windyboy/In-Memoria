@@ -127,10 +127,11 @@ claude mcp add in-memoria -- npx in-memoria server
 # Analyze and learn from your project
 npx in-memoria learn ./my-project
 
-# Or let AI agents trigger learning automatically
-# (Just start the server and let auto_learn_if_needed handle it)
+# Start the server and run learn when prompted by your agent
 npx in-memoria server
 ```
+
+Vector search is on by default using the built-in SQLite vector index. Disable with `IN_MEMORIA_VECTOR_BACKEND=none` or enable SQLite+vec (https://github.com/asg017/sqlite-vec) with `IN_MEMORIA_VECTOR_BACKEND=vec` and `IN_MEMORIA_SQLITE_VEC_PATH=/path/to/vec/extension`. The vector index is stored locally in `in-memoria-vectors.db` alongside your main DB.
 
 ## How It Works
 
@@ -160,8 +161,8 @@ In Memoria follows a **three-layer architecture** with dependency injection for 
 ├─────────────────────────────────────────────────────────────┤
 │                    Storage Layer                            │
 │  ┌─────────────────┐           ┌─────────────────────────┐  │
-│  │   SQLite DB     │           │   Vector Store          │  │
-│  │ (4 tables only)│           │   (Qdrant/SurrealDB)    │  │
+│  │   SQLite DB     │           │   SQLite Vector Index   │  │
+│  │ (4 tables only) │           │   (semantic index)      │  │
 │  └─────────────────┘           └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -203,18 +204,20 @@ In Memoria follows a **three-layer architecture** with dependency injection for 
 - **RateLimiter** - DoS protection with configurable sliding-window rate limiting for MCP tools
 - **CircuitBreaker** - Resilience with automatic fallback to local storage when external services fail
 - **Architectural Guardrails** - Build-time verification scripts enforce layer separation and design principles
-- 13 specialized MCP tools for AI assistants (organized into 4 categories with extensible registry)
-- SQLite for structured data, unified vector store abstraction (Qdrant or SurrealDB)
+- 8 specialized MCP tools for AI assistants (organized into 3 categories)
+- SQLite-backed storage for learned concepts, patterns, and project metadata
+- Built-in SQLite vector index for semantic search (disable with `IN_MEMORIA_VECTOR_BACKEND=none`; optional SQLite-vec with `IN_MEMORIA_VECTOR_BACKEND=vec` and `IN_MEMORIA_SQLITE_VEC_PATH`). Vector data lives in `in-memoria-vectors.db` next to the main DB.
 - Smart routing that maps features to files
 
 **Storage** - Local-first:
 
 - Everything stays on your machine
-- SQLite for structured data, SurrealDB with SurrealKV backend for persistent vector embeddings
-- Local transformers.js for embeddings (Xenova/all-MiniLM-L6-v2) that read/write from the Hugging Face cache
-  - **Cache priority**: `IN_MEMORIA_EMBEDDING_CACHE_DIR` → `HUGGINGFACE_HUB_CACHE` → `HF_HOME/hub`
-  - **Use existing cache**: If you've downloaded models with `hf download`, set `HUGGINGFACE_HUB_CACHE` to your cache directory
-  - **Offline mode**: Set `TRANSFORMERS_OFFLINE=true` to disable remote fetches and use local cache only
+- Single SQLite database per project: defaults to `<project>/in-memoria.db`
+- Built-in semantic index stored in the same SQLite file (disable with `IN_MEMORIA_VECTOR_BACKEND=none`)
+- Optional SQLite-vec acceleration: set `IN_MEMORIA_VECTOR_BACKEND=vec` and point `IN_MEMORIA_SQLITE_VEC_PATH` to the sqlite-vec extension; vector index stored in `in-memoria-vectors.db`; falls back to cosine if loading fails
+- Embeddings use `@xenova/transformers` (default `Xenova/all-MiniLM-L6-v2`, 384-dim). Reuse your HF cache with `HUGGINGFACE_HUB_CACHE` or set `TRANSFORMERS_OFFLINE=true` for offline mode
+- Search uses both: vector hits first (if enabled), then SQLite matches to fill remaining results
+- Learning is idempotent: rerun with `--force` to refresh after major changes
 
 ### What Makes It Different
 
@@ -449,13 +452,13 @@ npm run build:rust  # Build Rust components
 A: No, it enhances them. In Memoria provides the memory and context that tools like Claude, Copilot, and Cursor can use to give better suggestions.
 
 **Q: What data is collected?**
-A: Everything stays local. No telemetry, no phone-home. Your code never leaves your machine. All embeddings are generated locally using transformers.js models.
+A: Everything stays local. No telemetry, no phone-home. Learned concepts, patterns, and vectors are stored in a SQLite file in your project directory (disable vectors with `IN_MEMORIA_VECTOR_BACKEND=none`).
 
 **Q: How accurate is pattern learning?**
 A: It improves with codebase size and consistency. Projects with established patterns see better results than small or inconsistent codebases. The system learns from frequency and repetition.
 
 **Q: What's the performance impact?**
-A: Minimal. Initial learning takes time (proportional to codebase size), but subsequent queries are fast. File watching enables incremental updates. Smart filtering skips build artifacts automatically.
+A: Minimal. Initial learning takes time (proportional to codebase size), but subsequent queries hit the local SQLite cache so they're fast. There is no background file watching; rerun `in-memoria learn --force` after major changes.
 
 **Q: What if analysis fails or produces weird results?**
 A: [Open an issue](https://github.com/windyboy/In-Memoria/issues) with details. Built-in timeouts and circuit breakers handle most edge cases, but real-world codebases are messy and we need your feedback to improve.

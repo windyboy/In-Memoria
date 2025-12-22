@@ -12,6 +12,9 @@ const blueprint = await get_project_blueprint();
 if (blueprint.learningStatus.recommendation === 'learning_recommended') {
   await learn_codebase_intelligence({ path: '.' });
 }
+// Learning writes to <project>/in-memoria.db (override with IN_MEMORIA_DB_PATH)
+// Vector search is built-in via SQLite; set IN_MEMORIA_VECTOR_BACKEND=none to disable
+// Optional sqlite-vec: IN_MEMORIA_VECTOR_BACKEND=vec + IN_MEMORIA_SQLITE_VEC_PATH=/path/to/vec/extension
 
 // 3. Search and analyze
 const results = await search_codebase({ query: 'auth', type: 'semantic' });
@@ -29,8 +32,8 @@ const analysis = await analyze_codebase({ path: './src' });
 - `get_intelligence_metrics` - System health
 
 ### Limited (2 tools - placeholder responses)
-- `get_pattern_recommendations` - Returns empty
-- `predict_coding_approach` - Returns generic response
+- `get_pattern_recommendations` - Returns basic pattern info from the SQLite cache
+- `predict_coding_approach` - Returns generic guidance (no smart routing yet)
 
 ## Usage
 
@@ -59,6 +62,7 @@ await analyze_codebase({ path: './src/auth' });
 **Learn codebase:**
 ```typescript
 await learn_codebase_intelligence({ path: '.' });
+// Idempotent unless you pass { force: true }
 ```
 
-That's it. Use the 6 working tools, avoid the 2 limited ones.
+That's it. Use the 6 working tools, treat the 2 limited ones as best-effort, and rerun learning with `force: true` only after major codebase changes.

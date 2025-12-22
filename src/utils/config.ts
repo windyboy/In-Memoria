@@ -11,6 +11,29 @@ class ConfigManager {
 
         return join(projectPath, filename);
     }
+
+    getVectorBackend(): "sqlite" | "vec" | "none" {
+        const backend = (process.env.IN_MEMORIA_VECTOR_BACKEND || "").toLowerCase();
+        if (backend === "none") return "none";
+        if (backend === "vec") return "vec";
+        return "sqlite";
+    }
+
+    getEmbeddingModel(): string {
+        return process.env.IN_MEMORIA_EMBEDDING_MODEL || "Xenova/all-MiniLM-L6-v2";
+    }
+
+    getEmbeddingDimension(): number {
+        const raw = process.env.IN_MEMORIA_EMBEDDING_DIMENSION;
+        const parsed = raw ? Number(raw) : 384;
+        return Number.isFinite(parsed) ? parsed : 384;
+    }
+
+    getVecExtensionPath(): string | undefined {
+        const extPath = process.env.IN_MEMORIA_SQLITE_VEC_PATH;
+        return extPath && extPath.trim().length > 0 ? extPath : undefined;
+    }
+
 }
 
 export const config = new ConfigManager();

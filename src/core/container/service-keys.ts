@@ -24,10 +24,12 @@ export const ServiceKeys = {
   
   // Infrastructure dependencies
   DATABASE: createServiceKey<import('../../storage/sqlite-db.js').SQLiteDatabase>('database'),
+  VECTOR_STORE: createServiceKey<import('../../storage/vector-store.js').VectorStore>('vectorStore'),
   
   // Engines (to be wrapped by services)
   SEMANTIC_ENGINE: createServiceKey<import('../../utils/semantic-engine.js').SemanticEngine>('semanticEngine'),
   PATTERN_ENGINE: createServiceKey<import('../../utils/pattern-engine.js').PatternEngine>('patternEngine'),
+  EMBEDDING_ENGINE: createServiceKey<import('../../utils/embedding-engine.js').EmbeddingEngine>('embeddingEngine'),
 
   // Utilities
   LOGGER: createServiceKey<typeof import('../../utils/logger.js').Logger>('logger'),

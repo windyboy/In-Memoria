@@ -119,31 +119,32 @@ Add to your Kiro MCP configuration (`.kiro/settings/mcp.json`):
 
 ### Environment Variables
 
-Set these before starting the MCP server:
+Set these before starting the MCP server (all optional):
 
 ```bash
 # Logging level (error, warn, info, debug)
 export IN_MEMORIA_LOG_LEVEL=warn
 
-# Custom database location
-export IN_MEMORIA_DB_PATH=/path/to/custom/db
+# Custom database location (defaults to <project>/in-memoria.db)
+export IN_MEMORIA_DB_PATH=/path/to/custom/db.sqlite
 
-# SurrealDB sync for crash safety (recommended)
-export SURREAL_SYNC_DATA=true
+# Custom database filename (kept in project root)
+export IN_MEMORIA_DB_FILENAME=my-memoria.db
 
-# Embedding model settings
+# Embedding model (used for vector search)
 export IN_MEMORIA_EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
 export IN_MEMORIA_EMBEDDING_DIMENSION=384
-export IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY=true
 
-# Hugging Face cache configuration (use your existing cache)
-export IN_MEMORIA_EMBEDDING_CACHE_DIR=C:\Users\windy\.cache\huggingface\hub
-# Alternative: Use standard Hugging Face environment variables
-export HUGGINGFACE_HUB_CACHE=C:\Users\windy\.cache\huggingface\hub
-export HF_HOME=C:\Users\windy\.cache\huggingface
-
-# Disable remote model downloads (use local cache only)
+# Hugging Face cache location / offline mode for embeddings
+export HUGGINGFACE_HUB_CACHE=/path/to/hf/cache
 export TRANSFORMERS_OFFLINE=true
+
+# Vector backend:
+# - sqlite (default): cosine search stored in the SQLite DB
+# - vec: uses sqlite-vec extension (https://github.com/asg017/sqlite-vec), stores vectors in in-memoria-vectors.db alongside the main DB
+# - none: disable vectors entirely (concept/pattern matching only)
+export IN_MEMORIA_VECTOR_BACKEND=sqlite
+export IN_MEMORIA_SQLITE_VEC_PATH=/path/to/vec/extension  # required if using vec
 ```
 
 ### Project-Specific Setup
@@ -156,57 +157,6 @@ in-memoria server /path/to/your/project
 
 # Or let tools receive project paths dynamically (recommended)
 in-memoria server
-```
-
-### Using Your Existing Hugging Face Cache
-
-If you've already downloaded models using `huggingface-hub` (like you did with `hf download`), In-Memoria can use your existing cache:
-
-**Quick Start (Windows):**
-
-Use the provided helper scripts:
-```powershell
-# PowerShell
-.\setup-embedding-cache.ps1
-
-# Or CMD
-setup-embedding-cache.bat
-```
-
-**Manual Setup - Windows (PowerShell):**
-```powershell
-# Set environment variables to use your existing cache
-$env:HUGGINGFACE_HUB_CACHE="C:\Users\windy\.cache\huggingface\hub"
-$env:TRANSFORMERS_OFFLINE="true"
-$env:IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY="true"
-
-# Start the MCP server
-npx in-memoria server
-```
-
-**Manual Setup - Windows (CMD):**
-```cmd
-set HUGGINGFACE_HUB_CACHE=C:\Users\windy\.cache\huggingface\hub
-set TRANSFORMERS_OFFLINE=true
-set IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY=true
-
-npx in-memoria server
-```
-
-**For permanent configuration**, add these to your system environment variables or create a `.env` file in your project directory:
-
-```env
-HUGGINGFACE_HUB_CACHE=C:\Users\windy\.cache\huggingface\hub
-TRANSFORMERS_OFFLINE=true
-IN_MEMORIA_EMBEDDINGS_LOCAL_ONLY=true
-IN_MEMORIA_EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
-IN_MEMORIA_EMBEDDING_DIMENSION=384
-```
-
-**Verify your cache location:**
-Your model should be at:
-```
-C:\Users\windy\.cache\huggingface\hub\models--Xenova--all-MiniLM-L6-v2\snapshots\[hash]\
 ```
 
 ## Available Tools
@@ -231,8 +181,8 @@ The MCP server provides 8 tools organized into 3 categories:
 
 1. **Start your AI assistant** with In-Memoria configured
 2. **Get project context**: Ask for project blueprint
-3. **Learn the codebase**: If recommended, run learning
-4. **Use intelligence**: Search, analyze, and get insights
+3. **Learn the codebase**: If recommended, run learning (results persist in SQLite)
+4. **Use intelligence**: Search, analyze, and get insights (vectors stored locally in SQLite; optional sqlite-vec acceleration)
 
 Example conversation with Claude:
 ```
@@ -264,6 +214,11 @@ Claude: "Now I have full intelligence about your codebase. What would you like t
 - Large codebases (100k+ files) can take time on first analysis
 - Use `force: false` to avoid re-learning when not needed
 - Consider excluding build artifacts and node_modules
+
+**Vector search returns empty results**
+- Ensure vectors are enabled (unset `IN_MEMORIA_VECTOR_BACKEND` or set to `sqlite`/`vec`)
+- If using sqlite-vec, confirm `IN_MEMORIA_SQLITE_VEC_PATH` points to a valid extension
+- Re-run `in-memoria learn` to rebuild embeddings
 
 ### Debug Mode
 
@@ -298,7 +253,7 @@ in-memoria learn ./src --dry-run
 
 ## Security Notes
 
-- All data stays local (SQLite + SurrealDB for vectors)
+- All data stays local (SQLite). If vector search is enabled, embeddings are stored in your Qdrant instance.
 - No telemetry or phone-home functionality
 - Path validation prevents access outside project boundaries
 - Rate limiting protects against DoS attacks

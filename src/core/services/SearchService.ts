@@ -1,5 +1,7 @@
 import { SQLiteDatabase } from "../../storage/sqlite-db.js";
 import { translateError, ValidationError } from "../errors.js";
+import { VectorStore, VectorSearchResult } from "../../storage/vector-store.js";
+import { EmbeddingEngine } from "../../utils/embedding-engine.js";
 
 export interface SearchOptions {
     language?: string;
@@ -45,30 +47,75 @@ export interface SearchService {
 }
 
 export class SearchServiceImpl implements SearchService {
-    constructor(private database: SQLiteDatabase) {}
+    constructor(
+        private database: SQLiteDatabase,
+        private vectorStore: VectorStore,
+        private embeddingEngine: EmbeddingEngine,
+    ) {}
 
     async searchSemantic(query: string, options: SearchOptions = {}): Promise<SemanticSearchResult[]> {
         try {
             this.validateQuery(query, "SearchService.searchSemantic");
 
             const limit = options.limit ?? 10;
-            const concepts = this.database
-                .getSemanticConcepts()
-                .filter((concept) => concept.conceptName.toLowerCase().includes(query.toLowerCase()))
-                .slice(0, limit);
+            const results: SemanticSearchResult[] = [];
+            const seen = new Set<string>();
 
-            return concepts.map((concept) => ({
-                file: concept.filePath,
-                content: concept.conceptName,
-                score: concept.confidenceScore,
-                context: `${concept.conceptType} ${concept.conceptName}`,
-                concept: concept.conceptName,
-                similarity: concept.confidenceScore,
-                metadata: {
-                    type: concept.conceptType,
-                    searchType: "semantic",
-                },
-            }));
+            if (this.vectorStore.isEnabled()) {
+                const vector = await this.embeddingEngine.embed(query);
+                if (vector.length > 0) {
+                    const vectorResults: VectorSearchResult[] = await this.vectorStore.search(vector, limit);
+                    if (vectorResults.length > 0) {
+                        for (const result of vectorResults) {
+                            const id = result.payload.id || result.id;
+                            if (seen.has(id)) continue;
+                            seen.add(id);
+                            results.push({
+                                file: result.payload.filePath || "unknown",
+                                content: result.payload.conceptName || result.payload.patternType || query,
+                                score: result.score,
+                                context: result.payload.conceptType || result.payload.patternType || "",
+                                concept: result.payload.conceptName || result.payload.patternType || query,
+                                similarity: result.score,
+                                metadata: {
+                                    type: result.payload.conceptType || result.payload.patternType || "unknown",
+                                    searchType: "semantic",
+                                    source: "vector",
+                                },
+                            });
+                            if (results.length >= limit) break;
+                        }
+                    }
+                }
+            }
+
+            const remaining = limit - results.length;
+            if (remaining > 0) {
+                const concepts = this.database
+                    .getSemanticConcepts()
+                    .filter((concept) => concept.conceptName.toLowerCase().includes(query.toLowerCase()))
+                    .slice(0, limit);
+
+                for (const concept of concepts) {
+                    if (seen.has(concept.id)) continue;
+                    if (results.length >= limit) break;
+                    results.push({
+                        file: concept.filePath,
+                        content: concept.conceptName,
+                        score: concept.confidenceScore,
+                        context: `${concept.conceptType} ${concept.conceptName}`,
+                        concept: concept.conceptName,
+                        similarity: concept.confidenceScore,
+                        metadata: {
+                            type: concept.conceptType,
+                            searchType: "semantic",
+                            source: "sqlite",
+                        },
+                    });
+                }
+            }
+
+            return results;
         } catch (error) {
             throw translateError(error, "Semantic search");
         }
