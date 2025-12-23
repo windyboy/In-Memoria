@@ -4,32 +4,22 @@ import { dirname, join } from "path";
 import { Logger } from "../utils/logger.js";
 import { config } from "../utils/config.js";
 
-export interface VectorItemPayload {
-    id: string;
-    type: "concept" | "pattern";
-    filePath?: string;
-    conceptName?: string;
-    conceptType?: string;
-    patternType?: string;
-}
-
 export interface VectorItem {
-    id: string;
-    vector: number[];
-    payload: VectorItemPayload;
-}
-
-export interface VectorSearchResult {
-    id: string;
-    score: number;
-    payload: VectorItemPayload;
+    id: string;        // chunk_id
+    vector: number[];  // embedding 向量
 }
 
 export interface VectorStore {
-    isEnabled(): boolean;
-    upsert(items: VectorItem[]): Promise<void>;
-    search(vector: number[], limit?: number): Promise<VectorSearchResult[]>;
+    // 向量操作（仅 embedding）
+    upsertVectors(items: VectorItem[]): Promise<void>;
+    searchVectors(vector: number[], limit: number): Promise<string[]>; // 返回 chunk_ids
+    deleteByIds(ids: string[]): Promise<void>;
     clear(): Promise<void>;
+
+    // 索引状态
+    isEnabled(): boolean;
+    getVectorCount(): number;
+    needsRebuild(): boolean; // 检查 embedding 版本是否变化
 }
 
 class NullVectorStore implements VectorStore {
@@ -37,16 +27,28 @@ class NullVectorStore implements VectorStore {
         return false;
     }
 
-    async upsert(): Promise<void> {
+    async upsertVectors(): Promise<void> {
         return;
     }
 
-    async search(): Promise<VectorSearchResult[]> {
+    async searchVectors(): Promise<string[]> {
         return [];
+    }
+
+    async deleteByIds(): Promise<void> {
+        return;
     }
 
     async clear(): Promise<void> {
         return;
+    }
+
+    getVectorCount(): number {
+        return 0;
+    }
+
+    needsRebuild(): boolean {
+        return false;
     }
 }
 
@@ -74,7 +76,6 @@ class SQLiteCosineVectorStore implements VectorStore {
             CREATE TABLE IF NOT EXISTS vector_cache (
                 id TEXT PRIMARY KEY,
                 vector TEXT NOT NULL,
-                payload TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -88,20 +89,19 @@ class SQLiteCosineVectorStore implements VectorStore {
         }
     }
 
-    async upsert(items: VectorItem[]): Promise<void> {
+    async upsertVectors(items: VectorItem[]): Promise<void> {
         if (!items.length) return;
 
         const tx = this.db.transaction(() => {
             const stmt = this.db.prepare(`
-                INSERT OR REPLACE INTO vector_cache (id, vector, payload)
-                VALUES (?, ?, ?)
+                INSERT OR REPLACE INTO vector_cache (id, vector)
+                VALUES (?, ?)
             `);
 
             items.forEach((item) => {
                 stmt.run(
                     item.id,
                     JSON.stringify(item.vector),
-                    JSON.stringify(item.payload),
                 );
             });
         });
@@ -113,22 +113,21 @@ class SQLiteCosineVectorStore implements VectorStore {
         }
     }
 
-    async search(vector: number[], limit = 10): Promise<VectorSearchResult[]> {
+    async searchVectors(vector: number[], limit = 10): Promise<string[]> {
         if (!vector.length) return [];
         const rows = this.db
-            .prepare("SELECT id, vector, payload FROM vector_cache")
-            .all() as Array<{ id: string; vector: string; payload: string }>;
+            .prepare("SELECT id, vector FROM vector_cache")
+            .all() as Array<{ id: string; vector: string }>;
 
         const target = this.normalize(vector);
-        const scored: Array<{ id: string; score: number; payload: VectorItemPayload }> = [];
+        const scored: Array<{ id: string; score: number }> = [];
 
         for (const row of rows) {
             try {
                 const vec = JSON.parse(row.vector) as number[];
                 if (!Array.isArray(vec) || vec.length === 0) continue;
-                const payload = JSON.parse(row.payload) as VectorItemPayload;
                 const score = this.cosine(target, this.normalize(vec));
-                scored.push({ id: row.id, score, payload });
+                scored.push({ id: row.id, score });
             } catch (error) {
                 Logger.warn("Failed to parse vector cache entry:", error);
             }
@@ -137,11 +136,32 @@ class SQLiteCosineVectorStore implements VectorStore {
         return scored
             .sort((a, b) => b.score - a.score)
             .slice(0, limit)
-            .map((item) => ({
-                id: item.id,
-                score: item.score,
-                payload: item.payload,
-            }));
+            .map((item) => item.id);
+    }
+
+    async deleteByIds(ids: string[]): Promise<void> {
+        if (!ids.length) return;
+
+        const placeholders = ids.map(() => "?").join(",");
+        try {
+            this.db.prepare(`DELETE FROM vector_cache WHERE id IN (${placeholders})`).run(...ids);
+        } catch (error) {
+            Logger.warn("Failed to delete vectors from cache:", error);
+        }
+    }
+
+    getVectorCount(): number {
+        try {
+            const row = this.db.prepare("SELECT COUNT(*) as count FROM vector_cache").get() as { count: number };
+            return row.count;
+        } catch {
+            return 0;
+        }
+    }
+
+    needsRebuild(): boolean {
+        // Cosine store doesn't track embedding versions, always assume rebuild needed
+        return true;
     }
 
     private normalize(vec: number[]): number[] {
@@ -165,13 +185,6 @@ class SQLiteVecVectorStore implements VectorStore {
     private dimension: number;
     private cosineFallback: SQLiteCosineVectorStore;
     private available = false;
-
-    private toSafeInteger(value: unknown): number | undefined {
-        const num = typeof value === "bigint"
-            ? Number(value)
-            : Number.parseInt(String(value), 10);
-        return Number.isSafeInteger(num) ? num : undefined;
-    }
 
     constructor(vecDbPath: string, dimension: number, extensionPath: string) {
         const dir = dirname(vecDbPath);
@@ -197,14 +210,12 @@ class SQLiteVecVectorStore implements VectorStore {
         try {
             this.db.loadExtension(extensionPath);
             this.db.exec(`
-                CREATE TABLE IF NOT EXISTS vector_payloads (
-                    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                    id TEXT UNIQUE NOT NULL,
-                    payload TEXT NOT NULL
+                CREATE TABLE IF NOT EXISTS chunk_vectors (
+                    chunk_id TEXT PRIMARY KEY,
+                    embedding BLOB NOT NULL
                 );
-                CREATE VIRTUAL TABLE IF NOT EXISTS vector_index USING vec0(
-                    vector float[${this.dimension}]
-                );
+                CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors_vss
+                USING vss0(embedding(${this.dimension}));
             `);
             this.available = true;
         } catch (error) {
@@ -216,10 +227,10 @@ class SQLiteVecVectorStore implements VectorStore {
     private validateVecAvailability(): void {
         if (!this.available) return;
         try {
-            // sqlite-vec exposes vec_version(); use it to confirm the extension is active
-            this.db.prepare("SELECT vec_version()").get();
+            // sqlite-vss exposes vss_version(); use it to confirm the extension is active
+            this.db.prepare("SELECT vss_version()").get();
         } catch (error) {
-            Logger.warn("sqlite-vec validation failed; falling back to cosine store:", error);
+            Logger.warn("sqlite-vss validation failed; falling back to cosine store:", error);
             this.available = false;
         }
     }
@@ -230,8 +241,8 @@ class SQLiteVecVectorStore implements VectorStore {
         }
 
         try {
-            this.db.prepare("DELETE FROM vector_index").run();
-            this.db.prepare("DELETE FROM vector_payloads").run();
+            this.db.prepare("DELETE FROM chunk_vectors_vss").run();
+            this.db.prepare("DELETE FROM chunk_vectors").run();
         } catch (error) {
             Logger.warn("Failed to clear vec index; falling back:", error);
             await this.cosineFallback.clear();
@@ -240,58 +251,37 @@ class SQLiteVecVectorStore implements VectorStore {
         }
     }
 
-    async upsert(items: VectorItem[]): Promise<void> {
+    async upsertVectors(items: VectorItem[]): Promise<void> {
         if (!items.length) return;
 
         if (!this.available) {
-            return this.cosineFallback.upsert(items);
+            return this.cosineFallback.upsertVectors(items);
         }
 
         const tx = this.db.transaction(() => {
-            const selectPayload = this.db.prepare(
-                `SELECT rowid FROM vector_payloads WHERE id = ?`,
-            );
-            const insertPayload = this.db.prepare(
-                `INSERT INTO vector_payloads (id, payload) VALUES (?, ?)`,
-            );
-            const updatePayload = this.db.prepare(
-                `UPDATE vector_payloads SET payload = ? WHERE id = ?`,
-            );
-            const deleteVector = this.db.prepare(
-                `DELETE FROM vector_index WHERE rowid = ?`,
-            );
             const vectorStmt = this.db.prepare(`
-                INSERT OR REPLACE INTO vector_index (rowid, vector)
+                INSERT OR REPLACE INTO chunk_vectors (chunk_id, embedding)
                 VALUES (?, ?)
             `);
 
             for (const item of items) {
-                const payloadJson = JSON.stringify(item.payload);
-                const existing = selectPayload.get(item.id) as { rowid?: number | string } | undefined;
-                let rowid: number | undefined;
-
-                if (existing && existing.rowid !== undefined) {
-                    updatePayload.run(payloadJson, item.id);
-                    const raw = existing.rowid;
-                    rowid = this.toSafeInteger(raw);
-                } else {
-                    const res = insertPayload.run(item.id, payloadJson);
-                    const raw = res.lastInsertRowid;
-                    rowid = this.toSafeInteger(raw);
-                }
-
-                if (!Number.isInteger(rowid)) {
-                    Logger.warn(`Skipping vector upsert due to non-integer rowid for id=${item.id}`);
-                    continue;
-                }
-
                 const buffer = Buffer.from(new Float32Array(item.vector).buffer);
+                vectorStmt.run(item.id, buffer);
+
+                // Insert into vss table
                 try {
-                    const rowidInt = Number(rowid);
-                    deleteVector.run(rowidInt); // ensure no PK conflict
-                    vectorStmt.run(BigInt(rowidInt), buffer);
-                } catch (error) {
-                    Logger.warn(`Vec upsert failed for id=${item.id}, rowid=${rowid}; skipping this item`, error);
+                    const rowid = this.db.prepare(
+                        "SELECT rowid FROM chunk_vectors WHERE chunk_id = ?"
+                    ).get(item.id) as { rowid: number } | undefined;
+
+                    if (rowid) {
+                        this.db.prepare(`
+                            INSERT OR REPLACE INTO chunk_vectors_vss (rowid, embedding)
+                            VALUES (?, ?)
+                        `).run(rowid.rowid, buffer);
+                    }
+                } catch (vssError) {
+                    Logger.warn(`Failed to insert into vss table for chunk ${item.id}:`, vssError);
                 }
             }
         });
@@ -302,41 +292,90 @@ class SQLiteVecVectorStore implements VectorStore {
             Logger.warn("Failed to upsert into vec index; falling back to cosine store:", error);
             this.available = false;
             this.validateVecAvailability();
-            await this.cosineFallback.upsert(items);
+            await this.cosineFallback.upsertVectors(items);
         }
     }
 
-    async search(vector: number[], limit = 10): Promise<VectorSearchResult[]> {
+    async searchVectors(vector: number[], limit = 10): Promise<string[]> {
         if (!this.available) {
-            return this.cosineFallback.search(vector, limit);
+            return this.cosineFallback.searchVectors(vector, limit);
         }
 
         try {
             const buffer = Buffer.from(new Float32Array(vector).buffer);
             const rows = this.db
-                .prepare(
-                    `
-                    SELECT p.id, p.payload, v.distance
-                    FROM vector_index v
-                    JOIN vector_payloads p ON p.rowid = v.rowid
-                    WHERE v.vector MATCH topk_cosine(?, ?)
-                    ORDER BY v.distance
+                .prepare(`
+                    SELECT cv.chunk_id, vss.distance
+                    FROM chunk_vectors_vss vss
+                    JOIN chunk_vectors cv ON cv.rowid = vss.rowid
+                    WHERE vss.vector MATCH topk_cosine(?, ?)
+                    ORDER BY vss.distance
                     LIMIT ?
-                `,
-                )
-                .all(limit, buffer, limit) as Array<{ id: string; payload: string; distance: number }>;
+                `)
+                .all(buffer, limit, limit) as Array<{ chunk_id: string; distance: number }>;
 
-            return rows.map((row) => ({
-                id: row.id,
-                score: 1 / (1 + Number(row.distance || 0)),
-                payload: JSON.parse(row.payload) as VectorItemPayload,
-            }));
+            return rows.map((row) => row.chunk_id);
         } catch (error) {
             Logger.warn("Vec search failed; falling back to cosine:", error);
             this.available = false;
             this.validateVecAvailability();
-            return this.cosineFallback.search(vector, limit);
+            return this.cosineFallback.searchVectors(vector, limit);
         }
+    }
+
+    async deleteByIds(ids: string[]): Promise<void> {
+        if (!this.available) {
+            return this.cosineFallback.deleteByIds(ids);
+        }
+
+        if (!ids.length) return;
+
+        const tx = this.db.transaction(() => {
+            // Get rowids first
+            const placeholders = ids.map(() => "?").join(",");
+            const rowids = this.db
+                .prepare(`SELECT rowid FROM chunk_vectors WHERE chunk_id IN (${placeholders})`)
+                .all(...ids) as Array<{ rowid: number }>;
+
+            // Delete from vss table
+            for (const { rowid } of rowids) {
+                try {
+                    this.db.prepare("DELETE FROM chunk_vectors_vss WHERE rowid = ?").run(rowid);
+                } catch (error) {
+                    Logger.warn(`Failed to delete from vss for rowid ${rowid}:`, error);
+                }
+            }
+
+            // Delete from chunk_vectors
+            this.db.prepare(`DELETE FROM chunk_vectors WHERE chunk_id IN (${placeholders})`).run(...ids);
+        });
+
+        try {
+            tx();
+        } catch (error) {
+            Logger.warn("Failed to delete from vec index; falling back:", error);
+            this.available = false;
+            this.validateVecAvailability();
+            await this.cosineFallback.deleteByIds(ids);
+        }
+    }
+
+    getVectorCount(): number {
+        if (!this.available) {
+            return this.cosineFallback.getVectorCount();
+        }
+
+        try {
+            const row = this.db.prepare("SELECT COUNT(*) as count FROM chunk_vectors").get() as { count: number };
+            return row.count;
+        } catch {
+            return 0;
+        }
+    }
+
+    needsRebuild(): boolean {
+        // For now, always return true. In future phases, this will check embedding config versions
+        return true;
     }
 }
 

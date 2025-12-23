@@ -90,12 +90,18 @@ async function main() {
             break;
 
         case "status":
-            const { handleStatusCommand, parseStatusArgs } = await import("./cli/status.js");
-            const statusArgs = parseStatusArgs(args.slice(1));
-            await handleStatusCommand(statusArgs);
-            break;
-
-        default:
+                    const { handleStatusCommand, parseStatusArgs } = await import("./cli/status.js");
+                    const statusArgs = parseStatusArgs(args.slice(1));
+                    await handleStatusCommand(statusArgs);
+                    break;
+        
+                case "rebuild-index":
+                    const { handleRebuildIndexCommand, parseRebuildIndexArgs } = await import("./cli/rebuild-index.js");
+                    const rebuildArgs = parseRebuildIndexArgs(args.slice(1));
+                    await handleRebuildIndexCommand(rebuildArgs);
+                    break;
+        
+                default:
             showHelp();
             break;
     }
@@ -114,12 +120,16 @@ Commands:
   learn [path] [options]    Analyze codebase and build semantic intelligence database
   analyze [path]            Show insights about codebase structure and patterns
   status [path]             Show learning status and system health information
+  rebuild-index [path]      Rebuild vector index from existing chunks
   --version, -v             Display version information
 
 Learn Options:
   --quick                   Fast learning mode (limits files, skips patterns)
   --force                   Force re-learning even if already learned
   --verbose                 Show detailed progress information
+
+Rebuild Options:
+  --force                   Force rebuild even if config unchanged
 
 Examples:
   in-memoria learn .                # Build intelligence from current directory
@@ -128,6 +138,7 @@ Examples:
   in-memoria server                 # Start MCP server for AI assistants
   in-memoria server ./my-project    # Start server scoped to specific project
   in-memoria analyze ./lib          # Analyze library code insights
+  in-memoria rebuild-index .        # Rebuild vector index
 
 Environment Variables:
   OPENAI_API_KEY           Optional: Enable OpenAI embeddings (falls back to local)

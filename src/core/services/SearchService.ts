@@ -1,7 +1,9 @@
 import { SQLiteDatabase } from "../../storage/sqlite-db.js";
 import { translateError, ValidationError } from "../errors.js";
-import { VectorStore, VectorSearchResult } from "../../storage/vector-store.js";
+import { VectorStore } from "../../storage/vector-store.js";
 import { EmbeddingEngine } from "../../utils/embedding-engine.js";
+import { ChunkRepository } from "../../storage/repositories/chunk-repository.js";
+import { VectorIndexRepository } from "../../storage/repositories/vector-index-repository.js";
 
 export interface SearchOptions {
     language?: string;
@@ -51,6 +53,8 @@ export class SearchServiceImpl implements SearchService {
         private database: SQLiteDatabase,
         private vectorStore: VectorStore,
         private embeddingEngine: EmbeddingEngine,
+        private chunkRepository: ChunkRepository,
+        private vectorIndexRepository: VectorIndexRepository,
     ) {}
 
     async searchSemantic(query: string, options: SearchOptions = {}): Promise<SemanticSearchResult[]> {
@@ -61,44 +65,74 @@ export class SearchServiceImpl implements SearchService {
             const results: SemanticSearchResult[] = [];
             const seen = new Set<string>();
 
-            if (this.vectorStore.isEnabled()) {
+            // Phase 1: Vector search → get chunk_ids with distances
+            if (this.vectorIndexRepository.isEnabled()) {
                 const vector = await this.embeddingEngine.embed(query);
                 if (vector.length > 0) {
-                    const vectorResults: VectorSearchResult[] = await this.vectorStore.search(vector, limit);
-                    if (vectorResults.length > 0) {
-                        for (const result of vectorResults) {
-                            const id = result.payload.id || result.id;
-                            if (seen.has(id)) continue;
-                            seen.add(id);
+                    const searchResults = await this.vectorIndexRepository.search(vector, limit * 2); // Get more for filtering
+
+                    if (searchResults.length > 0) {
+                        // Phase 2: Business filtering + get chunk data
+                        const chunkIds = searchResults.map(r => r.chunkId);
+                        const chunks = this.chunkRepository.findByIds(chunkIds);
+
+                        // Apply business filters and sort by distance
+                        let filteredResults = searchResults
+                            .map(searchResult => {
+                                const chunk = chunks.find(c => c.id === searchResult.chunkId);
+                                return chunk ? { chunk, distance: searchResult.distance } : null;
+                            })
+                            .filter((item): item is { chunk: any; distance: number } => item !== null);
+
+                        if (options.language) {
+                            filteredResults = filteredResults.filter(item =>
+                                item.chunk.filePath.endsWith(`.${options.language}`)
+                            );
+                        }
+
+                        // Sort by distance (lower is better)
+                        filteredResults.sort((a, b) => a.distance - b.distance);
+
+                        // Convert to results
+                        for (const { chunk, distance } of filteredResults) {
+                            if (seen.has(chunk.id)) continue;
+                            seen.add(chunk.id);
+
+                            // Convert distance to similarity score (1.0 - normalized distance)
+                            const similarity = Math.max(0, Math.min(1.0, 1.0 - distance));
+
                             results.push({
-                                file: result.payload.filePath || "unknown",
-                                content: result.payload.conceptName || result.payload.patternType || query,
-                                score: result.score,
-                                context: result.payload.conceptType || result.payload.patternType || "",
-                                concept: result.payload.conceptName || result.payload.patternType || query,
-                                similarity: result.score,
+                                file: chunk.filePath,
+                                content: chunk.content,
+                                score: similarity,
+                                context: chunk.chunkType,
+                                concept: chunk.content.substring(0, 50) + "...",
+                                similarity: similarity,
                                 metadata: {
-                                    type: result.payload.conceptType || result.payload.patternType || "unknown",
+                                    type: chunk.chunkType,
                                     searchType: "semantic",
                                     source: "vector",
+                                    chunkId: chunk.id,
+                                    distance: distance,
                                 },
                             });
+
                             if (results.length >= limit) break;
                         }
                     }
                 }
             }
 
+            // Fallback: Search in concepts if vector search didn't yield enough results
             const remaining = limit - results.length;
             if (remaining > 0) {
                 const concepts = this.database
                     .getSemanticConcepts()
                     .filter((concept) => concept.conceptName.toLowerCase().includes(query.toLowerCase()))
-                    .slice(0, limit);
+                    .slice(0, remaining);
 
                 for (const concept of concepts) {
                     if (seen.has(concept.id)) continue;
-                    if (results.length >= limit) break;
                     results.push({
                         file: concept.filePath,
                         content: concept.conceptName,

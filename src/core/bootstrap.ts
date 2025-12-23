@@ -2,6 +2,9 @@ import { DIContainer, DIContainerConfig, Container } from "./container/container
 import { ServiceKeys } from "./container/service-keys.js";
 import { SQLiteDatabase } from "../storage/sqlite-db.js";
 import { createVectorStore } from "../storage/vector-store.js";
+import { ChunkRepository } from "../storage/repositories/chunk-repository.js";
+import { EmbeddingConfigRepository } from "../storage/repositories/embedding-config-repository.js";
+import { VectorIndexRepository } from "../storage/repositories/vector-index-repository.js";
 import { SemanticEngine } from "../utils/semantic-engine.js";
 import { PatternEngine } from "../utils/pattern-engine.js";
 import { Logger } from "../utils/logger.js";
@@ -56,6 +59,24 @@ function registerInfrastructureServices(container: DIContainer, projectPath: str
     container.registerFactory(ServiceKeys.VECTOR_STORE, () => {
         return createVectorStore(projectPath);
     });
+
+    container.registerFactory(ServiceKeys.CHUNK_REPOSITORY, () => {
+        const database = container.getSync(ServiceKeys.DATABASE);
+        return new ChunkRepository(database);
+    });
+
+    container.registerFactory(ServiceKeys.EMBEDDING_CONFIG_REPOSITORY, () => {
+        const database = container.getSync(ServiceKeys.DATABASE);
+        const model = config.getEmbeddingModel();
+        const dimension = config.getEmbeddingDimension();
+        return new EmbeddingConfigRepository(database, model, dimension);
+    });
+
+    container.registerFactory(ServiceKeys.VECTOR_INDEX_REPOSITORY, () => {
+        const dimension = config.getEmbeddingDimension();
+        const extensionPath = config.getVecExtensionPath();
+        return new VectorIndexRepository(projectPath, dimension, extensionPath);
+    });
 }
 
 function registerEngineServices(container: DIContainer): void {
@@ -88,7 +109,10 @@ function registerServiceLayer(container: DIContainer): void {
         const database = await container.get(ServiceKeys.DATABASE);
         const vectorStore = await container.get(ServiceKeys.VECTOR_STORE);
         const embeddingEngine = await container.get(ServiceKeys.EMBEDDING_ENGINE);
-        return new LearningServiceImpl(semanticEngine, patternEngine, database, vectorStore, embeddingEngine);
+        const embeddingConfigRepo = await container.get(ServiceKeys.EMBEDDING_CONFIG_REPOSITORY);
+        const vectorIndexRepository = await container.get(ServiceKeys.VECTOR_INDEX_REPOSITORY);
+        const chunkRepository = await container.get(ServiceKeys.CHUNK_REPOSITORY);
+        return new LearningServiceImpl(semanticEngine, patternEngine, database, vectorStore, embeddingEngine, embeddingConfigRepo, vectorIndexRepository, chunkRepository);
     });
 
     container.registerFactory(ServiceKeys.SEARCH_SERVICE, async () => {
@@ -96,7 +120,9 @@ function registerServiceLayer(container: DIContainer): void {
         const database = await container.get(ServiceKeys.DATABASE);
         const vectorStore = await container.get(ServiceKeys.VECTOR_STORE);
         const embeddingEngine = await container.get(ServiceKeys.EMBEDDING_ENGINE);
-        return new SearchServiceImpl(database, vectorStore, embeddingEngine);
+        const chunkRepository = await container.get(ServiceKeys.CHUNK_REPOSITORY);
+        const vectorIndexRepository = await container.get(ServiceKeys.VECTOR_INDEX_REPOSITORY);
+        return new SearchServiceImpl(database, vectorStore, embeddingEngine, chunkRepository, vectorIndexRepository);
     });
 
     container.registerFactory(ServiceKeys.DIAGNOSTIC_SERVICE, async () => {

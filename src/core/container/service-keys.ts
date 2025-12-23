@@ -25,6 +25,9 @@ export const ServiceKeys = {
   // Infrastructure dependencies
   DATABASE: createServiceKey<import('../../storage/sqlite-db.js').SQLiteDatabase>('database'),
   VECTOR_STORE: createServiceKey<import('../../storage/vector-store.js').VectorStore>('vectorStore'),
+  CHUNK_REPOSITORY: createServiceKey<import('../../storage/repositories/chunk-repository.js').ChunkRepository>('chunkRepository'),
+  EMBEDDING_CONFIG_REPOSITORY: createServiceKey<import('../../storage/repositories/embedding-config-repository.js').EmbeddingConfigRepository>('embeddingConfigRepository'),
+  VECTOR_INDEX_REPOSITORY: createServiceKey<import('../../storage/repositories/vector-index-repository.js').VectorIndexRepository>('vectorIndexRepository'),
   
   // Engines (to be wrapped by services)
   SEMANTIC_ENGINE: createServiceKey<import('../../utils/semantic-engine.js').SemanticEngine>('semanticEngine'),
