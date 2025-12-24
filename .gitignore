@@ -107,6 +107,7 @@ Cargo.lock
 *.swp
 *.swo
 *~
+*.bak
 
 # OS
 .DS_Store
@@ -116,6 +117,8 @@ Thumbs.db
 in-memoria.db
 in-memoria-*.db
 *.db-journal
+*.db-shm
+*.db-wal
 .in-memoria/cache/
 data/*.json
 vector-store.json
