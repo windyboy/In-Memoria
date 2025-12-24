@@ -24,16 +24,16 @@ const analysis = await analyze_codebase({ path: './src' });
 ## Available Tools
 
 ### Core (6 tools - fully working)
-- `analyze_codebase` - Analyze files/directories
-- `search_codebase` - Search by semantic/text/pattern
-- `learn_codebase_intelligence` - Build intelligence database
-- `get_project_blueprint` - Get tech stack + learning status
-- `get_semantic_insights` - Query learned concepts
-- `get_intelligence_metrics` - System health
+- `analyze_codebase` - Analyze files/directories ✅
+- `search_codebase` - Search by semantic/text/pattern ✅
+- `learn_codebase_intelligence` - Build intelligence database ✅
+- `get_project_blueprint` - Get tech stack + learning status ✅
+- `get_semantic_insights` - Query learned concepts ✅
+- `get_intelligence_metrics` - System health ✅
 
 ### Limited (2 tools - placeholder responses)
-- `get_pattern_recommendations` - Returns basic pattern info from the SQLite cache
-- `predict_coding_approach` - Returns generic guidance (no smart routing yet)
+- `get_pattern_recommendations` - Returns basic pattern info from cache ⚠️
+- `predict_coding_approach` - Returns generic guidance (no smart routing yet) ⚠️
 
 ## Usage
 

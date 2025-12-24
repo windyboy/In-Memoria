@@ -45,45 +45,70 @@ cd In-Memoria
 # 2. Switch to Node.js 20 LTS or 24+ (if using nvm)
 nvm use 20  # or nvm use 24
 
-# 3. Install Node.js dependencies
-npm install
+# 3. Install dependencies with bun (faster than npm)
+bun install
 
 # 4. Build Rust core
-npm run build:rust
+bun run build:rust
 
 # 5. Build TypeScript
-npm run build
+bun run build:ts
 
 # 6. Run tests
-npm test
+bun test
 cd rust-core && cargo test
 
-# 7. Start development
-npm run dev
+# 7. Start development mode (watch + reload)
+bun run dev
 ```
+
+**Note:** We use `bun` for development because it's significantly faster than `npm`. End users can still install the published package with `npm` as usual. See [INSTALLATION.md](INSTALLATION.md) for end-user installation.
 
 ### Project Structure Overview
 
 ```
 In-Memoria/
 ├── src/                          # TypeScript source code
-│   ├── mcp-server/              # MCP server and tools
-│   ├── engines/                 # TypeScript interfaces to Rust
-│   ├── storage/                 # Database and vector storage
-│   ├── watchers/               # File system monitoring
-│   └── index.ts                # CLI entry point
+│   ├── cli/                     # CLI commands (interface layer)
+│   ├── core/                    # Service layer + DI container
+│   │   ├── container/           # Dependency injection container
+│   │   ├── services/            # 4 core services (Analysis, Learning, Search, Diagnostic)
+│   │   ├── bootstrap.ts         # Container initialization
+│   │   └── errors.ts            # Shared error types
+│   ├── mcp/                     # MCP server + tools (interface layer)
+│   │   ├── server.ts            # MCP server implementation
+│   │   ├── tools/               # Empty (consolidated into adapters)
+│   │   └── adapters/            # Unified adapter layer
+│   ├── storage/                 # Database + vector storage (storage layer)
+│   │   ├── sqlite-db.ts         # SQLite database
+│   │   ├── vector-store.ts      # Vector index
+│   │   └── repositories/        # Data access layer
+│   ├── utils/                   # Shared utilities
+│   │   ├── semantic-engine.ts   # Rust semantic analysis wrapper
+│   │   ├── pattern-engine.ts    # Rust pattern learning wrapper
+│   │   ├── embedding-engine.ts  # Transformers embeddings
+│   │   ├── path-validator.ts    # Path security
+│   │   ├── rate-limiter.ts      # Rate limiting
+│   │   └── circuit-breaker.ts   # Resilience patterns
+│   └── index.ts                 # CLI entry point
 ├── rust-core/                   # High-performance Rust engines
 │   ├── src/
-│   │   ├── semantic.rs         # Tree-sitter semantic analysis
-│   │   ├── pattern_learning.rs # ML pattern recognition
-│   │   └── lib.rs              # napi-rs bindings
+│   │   ├── analysis/            # Semantic analysis, blueprint, complexity
+│   │   ├── patterns/            # Pattern learning and prediction
+│   │   ├── parsing/             # Tree-sitter parsing manager
+│   │   ├── types/               # Core types and errors
+│   │   └── lib.rs               # napi-rs bindings
 │   └── Cargo.toml
-├── schemas/                     # Data schemas and SQL
 ├── docs/                        # Documentation
-├── tests/                       # Test suites
-│   └── integration/            # Real-world MCP server tests
-└── src/__tests__/              # Unit test suites
+│   ├── ARCHITECTURAL_GUARDRAILS.md  # Architecture verification
+│   ├── TESTING.md               # Testing strategy
+│   └── ...
+└── scripts/                     # Build and verification scripts
+    ├── verify-architecture.ts   # Enforce architectural constraints
+    └── build-time-verification.ts
 ```
+
+**Note:** Test files are co-located with source code (e.g., `SearchService.test.ts` alongside `SearchService.ts`), not in separate `__tests__` directories.
 
 ## 🛠️ Development Workflow
 
@@ -114,17 +139,20 @@ git checkout -b feature/your-feature-name
 # ... code, test, repeat ...
 
 # 3. Run the full test suite
-npm run test:full
+bun run test:all
 
 # 4. Check code quality
-npm run lint
-npm run typecheck
+bun run typecheck
+bun run verify-architecture  # Verify architectural constraints
 cd rust-core && cargo clippy
 
-# 5. Commit with conventional commits
+# 5. Run pre-commit checks (architecture + typecheck + unit tests)
+bun run pre-commit
+
+# 6. Commit with conventional commits
 git commit -m "feat: add semantic search functionality"
 
-# 6. Push and create pull request
+# 7. Push and create pull request
 git push origin feature/your-feature-name
 ```
 
@@ -177,8 +205,11 @@ let result = self.parse_file(path).unwrap(); // Don't do this
 #### Unit Tests
 
 ```bash
-# TypeScript unit tests
-npm run test:unit
+# TypeScript unit tests (co-located with source files)
+bun test
+
+# Watch mode
+bun run test:watch
 
 # Rust unit tests
 cd rust-core && cargo test
@@ -187,22 +218,21 @@ cd rust-core && cargo test
 #### Integration Tests
 
 ```bash
-# End-to-end MCP tool testing
-npm run test:integration
-
-# Manual integration testing with real MCP server
-cd tests/integration
-node test-mcp-client.js        # Basic MCP functionality
-node test-advanced-mcp.js      # Advanced features
-node test-error-handling.js    # Error validation
-node test-server-lifecycle.js  # Server lifecycle
+# Build first, then run integration tests
+bun run build
+bun run test:integration
 ```
 
-#### Performance Tests
+#### Architecture Verification
 
 ```bash
-# Benchmark critical operations
-npm run test:perf
+# Verify architectural constraints (runs automatically on build)
+bun run verify-architecture
+
+# This checks:
+# - Layer separation (CLI/MCP cannot import from core directly)
+# - Service isolation (services cannot import each other)
+# - No file watching (fs.watch/chokidar prohibited)
 ```
 
 ### Writing Tests

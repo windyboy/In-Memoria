@@ -38,10 +38,8 @@ bun run typecheck
 
 ### Testing
 ```bash
-# Run unit tests
+# Run unit tests (co-located with source files)
 bun test
-# or
-bun run test:unit
 
 # Run tests in watch mode
 bun run test:watch
@@ -58,6 +56,8 @@ cd rust-core && cargo test
 # Check Rust code quality
 cd rust-core && cargo clippy
 ```
+
+**Note:** Test files are co-located with source code (e.g., `SearchService.test.ts` alongside `SearchService.ts`), not in separate `__tests__` directories.
 
 ### Architecture Verification
 ```bash

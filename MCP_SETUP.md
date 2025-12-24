@@ -2,11 +2,13 @@
 
 This guide walks you through setting up the In-Memoria MCP server for use with AI assistants like Claude Desktop, GitHub Copilot, and other MCP-compatible tools.
 
+**📖 For complete installation instructions, troubleshooting, and platform-specific setup**, see [INSTALLATION.md](INSTALLATION.md).
+
 ## Prerequisites
 
-- Node.js 18+ installed
+- Node.js 18+ installed (20 LTS or 24+ recommended)
 - npm or npx available
-- AI assistant that supports MCP (Claude Desktop, GitHub Copilot, etc.)
+- AI assistant that supports MCP (Claude Desktop, GitHub Copilot, Kiro IDE, etc.)
 
 ## Quick Setup
 
@@ -19,6 +21,8 @@ npm install -g in-memoria
 # Or use directly with npx (no installation needed)
 npx in-memoria --version
 ```
+
+**Having installation issues?** See [INSTALLATION.md](INSTALLATION.md) for detailed troubleshooting.
 
 ### 2. Test the Installation
 
@@ -163,19 +167,19 @@ in-memoria server
 
 The MCP server provides 8 tools organized into 3 categories:
 
-### Core Analysis (2 tools)
+### Core Analysis (2 tools - Fully Working)
 - `analyze_codebase` - Deep analysis of files/directories
 - `search_codebase` - Multi-mode search (semantic/text/pattern)
 
-### Intelligence (5 tools)
-- `learn_codebase_intelligence` - Build intelligence database
-- `get_project_blueprint` - Instant project context
-- `get_semantic_insights` - Query learned code symbols
+### Intelligence (6 tools - 4 Fully Working, 2 Limited)
+- `learn_codebase_intelligence` - Build intelligence database ✅
+- `get_project_blueprint` - Instant project context ✅
+- `get_semantic_insights` - Query learned code symbols ✅
+- `get_intelligence_metrics` - Analytics on learned concepts ✅
 - `get_pattern_recommendations` - Get coding patterns ⚠️ (basic implementation)
 - `predict_coding_approach` - Implementation guidance ⚠️ (basic implementation)
 
-### Monitoring (1 tool)
-- `get_intelligence_metrics` - Analytics on learned concepts
+**Note:** 6 tools are fully production-ready. The 2 tools marked with ⚠️ work but provide simplified responses while we complete the pattern learning service layer. See [AGENT.md](AGENT.md) for detailed tool documentation.
 
 ## First Usage Workflow
 
@@ -241,8 +245,10 @@ Test if the server is working:
 in-memoria status
 
 # Test learning on a small directory
-in-memoria learn ./src --dry-run
+in-memoria learn ./src --verbose
 ```
+
+**For more troubleshooting help**, see the comprehensive troubleshooting section in [INSTALLATION.md](INSTALLATION.md).
 
 ## Performance Tips
 

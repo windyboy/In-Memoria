@@ -4,7 +4,6 @@ import { SQLiteDatabase } from "../../storage/sqlite-db.js";
 import { VectorStore } from "../../storage/vector-store.js";
 import { EmbeddingEngine } from "../../utils/embedding-engine.js";
 import { ChunkRepository } from "../../storage/repositories/chunk-repository.js";
-import { VectorIndexRepository } from "../../storage/repositories/vector-index-repository.js";
 import {
   createTestDatabase,
   createMockConcept,
@@ -20,8 +19,8 @@ class MockEmbeddingEngine {
   }
 }
 
-// Mock vector index repository
-class MockVectorIndexRepository {
+// Mock vector store
+class MockVectorStore implements VectorStore {
   private enabled = true;
   private vectors = new Map<string, number[]>();
 
@@ -33,56 +32,54 @@ class MockVectorIndexRepository {
     this.enabled = enabled;
   }
 
-  async upsertVector(chunkId: string, vector: number[]): Promise<void> {
-    this.vectors.set(chunkId, vector);
+  async upsertVectors(items: Array<{ id: string; vector: number[] }>): Promise<void> {
+    for (const item of items) {
+      this.vectors.set(item.id, item.vector);
+    }
   }
 
-  async search(
-    vector: number[],
-    limit: number,
-  ): Promise<Array<{ chunkId: string; distance: number }>> {
-    // Return mock search results
-    return Array.from(this.vectors.keys())
-      .slice(0, limit)
-      .map((chunkId, index) => ({
-        chunkId,
-        distance: 0.1 * (index + 1), // Increasing distance
-      }));
+  async searchVectors(vector: number[], limit: number): Promise<string[]> {
+    // Return mock search results - just return chunk IDs in order
+    return Array.from(this.vectors.keys()).slice(0, limit);
+  }
+
+  async deleteByIds(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      this.vectors.delete(id);
+    }
   }
 
   async clear(): Promise<void> {
     this.vectors.clear();
   }
-}
 
-// Mock vector store
-class MockVectorStore {
-  async searchVectors(vector: number[], limit: number): Promise<string[]> {
-    return [];
+  getVectorCount(): number {
+    return this.vectors.size;
+  }
+
+  needsRebuild(): boolean {
+    return false;
   }
 }
 
 describe("SearchService", () => {
   let db: SQLiteDatabase;
   let searchService: SearchServiceImpl;
-  let vectorStore: VectorStore;
+  let vectorStore: MockVectorStore;
   let embeddingEngine: EmbeddingEngine;
   let chunkRepository: ChunkRepository;
-  let vectorIndexRepository: MockVectorIndexRepository;
 
   beforeEach(() => {
     db = createTestDatabase();
-    vectorStore = new MockVectorStore() as any;
+    vectorStore = new MockVectorStore();
     embeddingEngine = new MockEmbeddingEngine() as any;
     chunkRepository = new ChunkRepository(db);
-    vectorIndexRepository = new MockVectorIndexRepository() as any;
 
     searchService = new SearchServiceImpl(
       db,
       vectorStore,
       embeddingEngine,
       chunkRepository,
-      vectorIndexRepository as any,
     );
   });
 
@@ -114,14 +111,10 @@ describe("SearchService", () => {
       ];
 
       db.upsertChunks(chunks);
-      await vectorIndexRepository.upsertVector(
-        "chunk-1",
-        createMockEmbedding(),
-      );
-      await vectorIndexRepository.upsertVector(
-        "chunk-2",
-        createMockEmbedding(),
-      );
+      await vectorStore.upsertVectors([
+        { id: "chunk-1", vector: createMockEmbedding() },
+        { id: "chunk-2", vector: createMockEmbedding() },
+      ]);
 
       // Execute search
       const results = await searchService.searchSemantic("authentication");
@@ -136,6 +129,7 @@ describe("SearchService", () => {
 
     it("should respect limit option", async () => {
       // Setup: Add 5 chunks
+      const vectorItems = [];
       for (let i = 0; i < 5; i++) {
         const chunk = createMockChunk({
           id: `chunk-${i}`,
@@ -143,11 +137,9 @@ describe("SearchService", () => {
           content: `function test${i}() { return ${i}; }`,
         });
         db.upsertChunks([chunk]);
-        await vectorIndexRepository.upsertVector(
-          chunk.id,
-          createMockEmbedding(),
-        );
+        vectorItems.push({ id: chunk.id, vector: createMockEmbedding() });
       }
+      await vectorStore.upsertVectors(vectorItems);
 
       // Execute with limit
       const results = await searchService.searchSemantic("test", { limit: 2 });
@@ -177,12 +169,9 @@ describe("SearchService", () => {
       ];
 
       db.upsertChunks(chunks);
-      for (const chunk of chunks) {
-        await vectorIndexRepository.upsertVector(
-          chunk.id,
-          createMockEmbedding(),
-        );
-      }
+      await vectorStore.upsertVectors(
+        chunks.map(chunk => ({ id: chunk.id, vector: createMockEmbedding() }))
+      );
 
       // Execute with language filter
       const results = await searchService.searchSemantic("code", {
@@ -199,7 +188,7 @@ describe("SearchService", () => {
 
     it("should handle vector search disabled", async () => {
       // Disable vector search
-      vectorIndexRepository.setEnabled(false);
+      vectorStore.setEnabled(false);
 
       // Should fall back to concept search
       const concepts = [
@@ -229,10 +218,9 @@ describe("SearchService", () => {
       ];
 
       db.upsertChunks(chunks);
-      await vectorIndexRepository.upsertVector(
-        "chunk-1",
-        createMockEmbedding(),
-      );
+      await vectorStore.upsertVectors([
+        { id: "chunk-1", vector: createMockEmbedding() },
+      ]);
 
       // Execute
       const results = await searchService.searchSemantic("duplicate");
@@ -459,7 +447,6 @@ describe("SearchService", () => {
         vectorStore,
         errorEngine as any,
         chunkRepository,
-        vectorIndexRepository as any,
       );
 
       // Should handle error gracefully (fall back to concept search)

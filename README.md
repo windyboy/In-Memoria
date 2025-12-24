@@ -81,6 +81,8 @@ npm install -g in-memoria
 npx in-memoria --help
 ```
 
+**📖 Complete Installation Guide**: See [INSTALLATION.md](INSTALLATION.md) for detailed installation instructions, troubleshooting, and platform-specific setup.
+
 ### Connect to Your AI Tool
 
 **📖 Complete Setup Guide**: See [MCP_SETUP.md](MCP_SETUP.md) for detailed instructions for all AI assistants.
@@ -129,6 +131,12 @@ npx in-memoria learn ./my-project
 
 # Start the server and run learn when prompted by your agent
 npx in-memoria server
+
+# Check learning status
+npx in-memoria status
+
+# Rebuild vector index if needed
+npx in-memoria rebuild-index
 ```
 
 Vector search is on by default using the built-in SQLite vector index. Disable with `IN_MEMORIA_VECTOR_BACKEND=none` or enable SQLite+vec (https://github.com/asg017/sqlite-vec) with `IN_MEMORIA_VECTOR_BACKEND=vec` and `IN_MEMORIA_SQLITE_VEC_PATH=/path/to/vec/extension`. The vector index is stored locally in `in-memoria-vectors.db` alongside your main DB.
@@ -187,7 +195,7 @@ In Memoria follows a **three-layer architecture** with dependency injection for 
 
 **Rust Layer** - Fast, native processing:
 
-- Tree-sitter AST parsing for 12 languages (TypeScript, JavaScript, Python, PHP, Rust, Go, Java, C/C++, C#, Svelte, SQL)
+- Tree-sitter AST parsing for 12 languages (TypeScript, JavaScript, Python, PHP, Rust, Go, Java, C/C++, C#, SQL, Kotlin, Markdown, Svelte)
 - Blueprint analyzer (detects project structure, entry points, architecture patterns)
 - Pattern learner (statistical analysis of your coding style)
 - Semantic engine (understands code relationships and concepts)
@@ -254,36 +262,32 @@ No more janky console spam. Progress bars update in-place with consistent 500ms 
 
 In Memoria provides **8 specialized tools** that AI assistants can call via MCP. They're organized into 3 categories:
 
-### 🎯 Core Analysis (2 tools)
+### 🎯 Core Analysis (2 tools - Fully Working)
 
 - `analyze_codebase` - Analyze files/directories with concepts, patterns, complexity
 - `search_codebase` - Multi-mode search (semantic/text/pattern)
 
-### 🧠 Intelligence (5 tools)
+### 🧠 Intelligence (5 tools - 4 Fully Working, 1 Limited)
 
-- `learn_codebase_intelligence` - Deep learning to extract patterns and architecture
-- `get_project_blueprint` - Instant project context with tech stack and entry points ⭐ (includes learning status)
-- `get_semantic_insights` - Query learned concepts and relationships
+- `learn_codebase_intelligence` - Deep learning to extract patterns and architecture ✅
+- `get_project_blueprint` - Instant project context with tech stack and entry points ✅ ⭐
+- `get_semantic_insights` - Query learned concepts and relationships ✅
+- `get_intelligence_metrics` - Analytics on learned patterns ✅
 - `get_pattern_recommendations` - Get patterns with related files for consistency ⚠️ (basic implementation)
 - `predict_coding_approach` - Implementation guidance with file routing ⚠️ (basic implementation)
 
-### 📊 Monitoring (1 tool)
+### 📊 Implementation Status
 
-- `get_intelligence_metrics` - Analytics on learned patterns
+**Fully Working (6 tools):**
+- Core analysis tools (2) - Production ready
+- Learning and intelligence tools (4) - Production ready
+- All provide accurate, useful responses
 
-**Phase 4 Status**: The following tools are mentioned in documentation but not yet implemented:
+**Limited Implementation (2 tools):**
+- `get_pattern_recommendations` - Returns basic pattern info from cache
+- `predict_coding_approach` - Returns generic guidance (no smart routing yet)
 
-- ❌ `auto_learn_if_needed` - Use `learn_codebase_intelligence` instead
-- ❌ `contribute_insights` - Not yet implemented  
-- ❌ `get_developer_profile` - Not yet implemented
-- ❌ `get_system_status` - Not yet implemented
-- ❌ `get_performance_status` - Not yet implemented
-
-**Current Implementation Status**:
-- ✅ Core analysis tools are fully functional
-- ✅ Learning and blueprint tools work well
-- ⚠️ Pattern recommendations return basic responses (service layer incomplete)
-- ⚠️ Coding approach prediction returns basic responses (service layer incomplete)
+These tools work but provide simplified responses while we complete the pattern learning service layer.
 
 > **For AI agents**: See [`AGENT.md`](AGENT.md) for complete tool reference with usage patterns and decision trees.
 
@@ -421,23 +425,29 @@ In Memoria works for both individual developers and teams:
 ```bash
 git clone https://github.com/windyboy/In-Memoria
 cd In-Memoria
-npm install
-npm run build
+
+# We use bun for faster development
+bun install
+bun run build
 ```
 
 **Requirements**:
 
-- Node.js 18+
+- Node.js 18+ (20 LTS or 24+ recommended)
 - Rust 1.70+ (for building from source)
+- Bun runtime (for development)
 - 2GB RAM minimum
 
 **Development**:
 
 ```bash
-npm run dev          # Start in development mode
-npm test            # Run test suite (98.3% pass rate)
-npm run build:rust  # Build Rust components
+bun run dev          # Start in development mode (watch + reload)
+bun test            # Run test suite (98.3% pass rate)
+bun run build:rust  # Build Rust components only
+bun run build:ts    # Build TypeScript only (faster)
 ```
+
+**Note**: End users can install with `npm` as usual. We use `bun` for development because it's faster. See [INSTALLATION.md](INSTALLATION.md) for end-user installation and [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development setup.
 
 **Quality metrics**:
 

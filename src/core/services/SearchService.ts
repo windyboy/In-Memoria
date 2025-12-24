@@ -3,7 +3,6 @@ import { translateError, ValidationError } from "../errors.js";
 import { VectorStore } from "../../storage/vector-store.js";
 import { EmbeddingEngine } from "../../utils/embedding-engine.js";
 import { ChunkRepository } from "../../storage/repositories/chunk-repository.js";
-import { VectorIndexRepository } from "../../storage/repositories/vector-index-repository.js";
 
 export interface SearchOptions {
   language?: string;
@@ -63,7 +62,6 @@ export class SearchServiceImpl implements SearchService {
     private vectorStore: VectorStore,
     private embeddingEngine: EmbeddingEngine,
     private chunkRepository: ChunkRepository,
-    private vectorIndexRepository: VectorIndexRepository,
   ) {}
 
   async searchSemantic(
@@ -77,52 +75,39 @@ export class SearchServiceImpl implements SearchService {
       const results: SemanticSearchResult[] = [];
       const seen = new Set<string>();
 
-      // Phase 1: Vector search → get chunk_ids with distances
-      if (this.vectorIndexRepository.isEnabled()) {
+      // Phase 1: Vector search → get chunk_ids
+      if (this.vectorStore.isEnabled()) {
         try {
           const vector = await this.embeddingEngine.embed(query);
           if (vector.length > 0) {
-            const searchResults = await this.vectorIndexRepository.search(
+            const chunkIds = await this.vectorStore.searchVectors(
               vector,
               limit * 2,
             ); // Get more for filtering
 
-            if (searchResults.length > 0) {
+            if (chunkIds.length > 0) {
               // Phase 2: Business filtering + get chunk data
-              const chunkIds = searchResults.map((r) => r.chunkId);
               const chunks = this.chunkRepository.findByIds(chunkIds);
 
-              // Apply business filters and sort by distance
-              let filteredResults = searchResults
-                .map((searchResult) => {
-                  const chunk = chunks.find(
-                    (c) => c.id === searchResult.chunkId,
-                  );
-                  return chunk
-                    ? { chunk, distance: searchResult.distance }
-                    : null;
-                })
-                .filter(
-                  (item): item is { chunk: any; distance: number } =>
-                    item !== null,
-                );
+              // Apply business filters - maintain order from vector search
+              let filteredChunks = chunkIds
+                .map((chunkId) => chunks.find((c) => c.id === chunkId))
+                .filter((chunk): chunk is NonNullable<typeof chunk> => chunk !== undefined);
 
               if (options.language) {
-                filteredResults = filteredResults.filter((item) =>
-                  item.chunk.filePath.endsWith(`.${options.language}`),
+                filteredChunks = filteredChunks.filter((chunk) =>
+                  chunk.filePath.endsWith(`.${options.language}`),
                 );
               }
 
-              // Sort by distance (lower is better)
-              filteredResults.sort((a, b) => a.distance - b.distance);
-
-              // Convert to results
-              for (const { chunk, distance } of filteredResults) {
+              // Convert to results with rank-based scoring
+              for (let i = 0; i < filteredChunks.length; i++) {
+                const chunk = filteredChunks[i];
                 if (seen.has(chunk.id)) continue;
                 seen.add(chunk.id);
 
-                // Convert distance to similarity score (1.0 - normalized distance)
-                const similarity = Math.max(0, Math.min(1.0, 1.0 - distance));
+                // Calculate similarity based on rank position (1.0 for first, decreasing)
+                const similarity = Math.max(0.1, 1.0 - (i / (limit * 2)));
 
                 results.push({
                   file: chunk.filePath,
@@ -136,7 +121,7 @@ export class SearchServiceImpl implements SearchService {
                     searchType: "semantic",
                     source: "vector",
                     chunkId: chunk.id,
-                    distance: distance,
+                    rank: i,
                   },
                 });
 

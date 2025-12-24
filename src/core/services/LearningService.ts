@@ -7,7 +7,6 @@ import { translateError } from "../errors.js";
 import { VectorStore, VectorItem } from "../../storage/vector-store.js";
 import { EmbeddingEngine } from "../../utils/embedding-engine.js";
 import { EmbeddingConfigRepository } from "../../storage/repositories/embedding-config-repository.js";
-import { VectorIndexRepository } from "../../storage/repositories/vector-index-repository.js";
 import { ChunkRepository } from "../../storage/repositories/chunk-repository.js";
 
 export interface LearningOptions {
@@ -37,7 +36,6 @@ export class LearningServiceImpl implements LearningService {
         private vectorStore: VectorStore,
         private embeddingEngine: EmbeddingEngine,
         private embeddingConfigRepo: EmbeddingConfigRepository,
-        private vectorIndexRepository: VectorIndexRepository,
         private chunkRepository: ChunkRepository,
     ) {}
 
@@ -145,7 +143,7 @@ export class LearningServiceImpl implements LearningService {
                 }
 
                 // 4. Generate and store chunks for vector indexing
-                if (this.vectorIndexRepository.isEnabled() && (needsRebuild || options.force)) {
+                if (this.vectorStore.isEnabled() && (needsRebuild || options.force)) {
                     options.progressCallback?.(85, 100, "Generating chunks for vector indexing...");
 
                     // Generate chunks from concepts (simplified for now)
@@ -182,22 +180,22 @@ export class LearningServiceImpl implements LearningService {
             tx();
 
             // Generate embeddings and update vector index (outside transaction due to async)
-            if (this.vectorIndexRepository.isEnabled() && (needsRebuild || options.force)) {
+            if (this.vectorStore.isEnabled() && (needsRebuild || options.force)) {
                 options.progressCallback?.(90, 100, "Building vector index...");
 
                 const chunks = this.chunkRepository.findByIds(storedConcepts.map(c => c.id));
-                const vectorItems = [];
+                const vectorItems: VectorItem[] = [];
                 for (const chunk of chunks) {
                     const embedding = await this.embeddingEngine.embed(chunk.content);
                     if (embedding.length > 0) {
                         vectorItems.push({
-                            chunkId: chunk.id,
-                            embedding,
+                            id: chunk.id,
+                            vector: embedding,
                         });
                     }
                 }
 
-                await this.vectorIndexRepository.upsertVectors(vectorItems);
+                await this.vectorStore.upsertVectors(vectorItems);
             }
 
             return {
